@@ -4,97 +4,156 @@ import yfinance as yf
 import pandas as pd
 
 # -------------------------------------------------------------------
-# PAGE CONFIG & TRADINGVIEW DARK THEME STYLING
+# PAGE CONFIG (FULLSCREEN & MOBILE OPTIMIZED FOR NOTHING PHONE)
 # -------------------------------------------------------------------
 st.set_page_config(
-    page_title="TradingView Command Center",
+    page_title="Trading Hub",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
-# Erzwingt das TradingView Dark-Theme für die gesamte App
+# Dark Theme + Mobile Response Fixes
 st.markdown("""
 <style>
-    /* Haupt-Hintergrund */
-    .stApp, .main {
+    /* Full Width & Zero Margins for Mobile Display */
+    .block-container {
+        padding-top: 0.5rem !important;
+        padding-bottom: 0.5rem !important;
+        padding-left: 0.2rem !important;
+        padding-right: 0.2rem !important;
+        max-width: 100% !important;
+    }
+    .stApp {
         background-color: #131722 !important;
         color: #d1d4dc !important;
     }
-    /* Seitenleiste Dunkel */
-    section[data-testid="stSidebar"] {
-        background-color: #1e222d !important;
-        border-right: 1px solid #2a2e39;
-    }
-    /* Textfarben in Seitenleiste */
-    section[data-testid="stSidebar"] p, section[data-testid="stSidebar"] label, section[data-testid="stSidebar"] span {
-        color: #d1d4dc !important;
-    }
-    /* Eingabefelder Dunkel */
+    /* Input & Button Styling */
     input, select, div[role="combobox"] {
-        background-color: #2a2e39 !important;
+        background-color: #1e222d !important;
         color: #ffffff !important;
-        border: 1px solid #363c4e !important;
+        border: 1px solid #2a2e39 !important;
+        border-radius: 6px !important;
     }
-    /* Buttons */
     .stButton>button {
         background-color: #2962ff !important;
         color: #ffffff !important;
         border: none !important;
         font-weight: bold;
+        width: 100%;
+        border-radius: 6px !important;
     }
-    .stButton>button:hover {
-        background-color: #1e53e5 !important;
-    }
+    /* Hide Header Elements */
+    header {visibility: hidden;}
+    footer {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
 
-# -------------------------------------------------------------------
-# SIDEBAR: NAVIGATION & SETUP
-# -------------------------------------------------------------------
-st.sidebar.title("⚡ TRADING CENTER")
-
-# A. Aktiensuche
-st.sidebar.markdown("### 🔍 Aktie / Ticker suchen")
-search_ticker = st.sidebar.text_input("Symbol eingeben:", value="NVDA").strip().upper()
-
-# B. Favoriten
-st.sidebar.markdown("### ⭐ Schnellzugriff")
-fav_stocks = ["NVDA", "AAPL", "GOOGL", "AVGO", "O", "TSLA", "PLTR"]
-selected_fav = st.sidebar.selectbox("Favoriten:", ["-- Auswählen --"] + fav_stocks)
-
-# Bestimme aktiven Ticker
-active_ticker = search_ticker
-if selected_fav != "-- Auswählen --":
-    active_ticker = selected_fav
-
-# C. Optionsstrategie & Setups
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 🎯 Setup & Strategie")
-strategy = st.sidebar.selectbox(
-    "Strategie:", 
-    ["Aktie / Long Trade", "Cash-Secured Put (CSP)", "Bull Put Spread", "Bear Call Spread"]
-)
-
-# Market selection for Scanner
-st.sidebar.markdown("---")
-market = st.sidebar.radio("Screener Markt:", ["USA 🇺🇸", "Europa 🇪🇺"])
+# Session State for Selected Ticker
+if "selected_ticker" not in st.session_state:
+    st.session_state.selected_ticker = "NVDA"
 
 # -------------------------------------------------------------------
-# TRADINGVIEW EMBEDDED WIDGET FUNCTION
+# HEADER & CONTROL BAR (ONE SCREEN LAYOUT)
 # -------------------------------------------------------------------
-def render_tradingview_widget(ticker):
-    """Baut das echte TradingView Interactive Chart Widget ein"""
-    # Yahoo Ticker zu TradingView Format anpassen (z.B. SIE.DE -> XETR:SIE)
+col_title, col_search, col_strat = st.columns([1.2, 1.2, 1.6])
+
+with col_title:
+    st.markdown(f"<h3 style='margin:0; padding:0; color:#2962ff;'>⚡ {st.session_state.selected_ticker}</h3>", unsafe_allow_html=True)
+
+with col_search:
+    manual_input = st.text_input("Ticker:", value=st.session_state.selected_ticker, label_visibility="collapsed").strip().upper()
+    if manual_input != st.session_state.selected_ticker and manual_input != "":
+        st.session_state.selected_ticker = manual_input
+
+with col_strat:
+    strategy = st.selectbox(
+        "Strategie",
+        ["Swing Trading", "Momentum", "Volumen Ausbruch", "Cash-Secured Put", "Bull Put Spread"],
+        label_visibility="collapsed"
+    )
+
+# Quick Favorites Bar
+fav_list = ["NVDA", "AAPL", "MSFT", "AMZN", "GOOGL", "TSLA", "PLTR", "SAP.DE", "SIE.DE"]
+cols_fav = st.columns(len(fav_list))
+for idx, fav in enumerate(fav_list):
+    if cols_fav[idx].button(fav, key=f"btn_{fav}"):
+        st.session_state.selected_ticker = fav
+        st.rerun()
+
+# -------------------------------------------------------------------
+# COMBINED USA & EU SCREENER WITH KEY METRICS
+# -------------------------------------------------------------------
+with st.expander("🔍 **Markt-Screener (USA & EU Combined)**", expanded=False):
+    if st.button("🚀 Live-Scan ausführen"):
+        scan_symbols = ["NVDA", "AAPL", "MSFT", "AMZN", "GOOGL", "TSLA", "PLTR", "SAP.DE", "SIE.DE", "ALV.DE", "MBG.DE"]
+        scan_results = []
+        
+        for sym in scan_symbols:
+            try:
+                t = yf.Ticker(sym)
+                df = t.history(period="3mo")
+                if len(df) >= 20:
+                    cp = df['Close'].iloc[-1]
+                    chg = ((cp - df['Close'].iloc[-2]) / df['Close'].iloc[-2]) * 100
+                    
+                    # RSI 14 Calculation
+                    delta = df['Close'].diff()
+                    gain = (delta.where(delta > 0, 0)).rolling(14).mean()
+                    loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+                    rs = gain / loss
+                    rsi = round(100 - (100 / (1 + rs.iloc[-1])), 1)
+                    
+                    # SMA 20 & 50
+                    sma20 = df['Close'].rolling(20).mean().iloc[-1]
+                    sma50 = df['Close'].rolling(50).mean().iloc[-1]
+                    trend = "🟢 Bullisch" if cp > sma20 > sma50 else ("🔴 Bärisch" if cp < sma20 < sma50 else "🟡 Neutral")
+                    
+                    # 52-Week High Distance
+                    high_52 = df['High'].max()
+                    dist_52h = round(((cp - high_52) / high_52) * 100, 1)
+
+                    scan_results.append({
+                        "Ticker": sym,
+                        "Kurs": round(cp, 2),
+                        "24h (%)": round(chg, 2),
+                        "RSI (14)": rsi,
+                        "Trend (SMA)": trend,
+                        "Abst. 52W-Hoch": f"{dist_52h}%"
+                    })
+            except:
+                pass
+        
+        if scan_results:
+            df_res = pd.DataFrame(scan_results)
+            st.dataframe(df_res, use_container_width=True)
+
+# -------------------------------------------------------------------
+# TRADINGVIEW CHART (FULLSCREEN ADAPTIVE WITH STRATEGY INDICATORS)
+# -------------------------------------------------------------------
+def get_tradingview_widget(ticker, strat):
+    # Mapping Tickers for TV
     tv_symbol = ticker
     if ".DE" in ticker:
         tv_symbol = f"XETR:{ticker.replace('.DE', '')}"
-    elif "." not in ticker:
-        tv_symbol = f"NASDAQ:{ticker}" if ticker in ["NVDA", "AAPL", "GOOGL", "MSFT", "AMZN", "META", "TSLA", "AMD", "PLTR"] else f"NYSE:{ticker}"
+    elif ticker in ["NVDA", "AAPL", "GOOGL", "MSFT", "AMZN", "META", "TSLA", "AMD", "PLTR"]:
+        tv_symbol = f"NASDAQ:{ticker}"
+    else:
+        tv_symbol = f"NYSE:{ticker}"
 
-    widget_code = f"""
-    <!-- TradingView Widget BEGIN -->
-    <div class="tradingview-widget-container" style="height:650px;width:100%;">
-      <div id="tradingview_chart" style="height:calc(100% - 32px);width:100%;"></div>
+    # Adaptive Studies based on Strategy
+    studies = ["MASimple@tv-basicstudies"]
+    if "Momentum" in strat:
+        studies = ["RSI@tv-basicstudies", "MACD@tv-basicstudies"]
+    elif "Volumen" in strat:
+        studies = ["Volume@tv-basicstudies", "VPVR@tv-basicstudies"]
+    elif "Swing" in strat:
+        studies = ["STD;EMA", "RSI@tv-basicstudies"]
+
+    studies_js = str(studies).replace("'", '"')
+
+    return f"""
+    <div class="tradingview-widget-container" style="height:100%;width:100%;">
+      <div id="tradingview_chart" style="height:580px;width:100%;"></div>
       <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
       <script type="text/javascript">
       new TradingView.widget(
@@ -110,52 +169,39 @@ def render_tradingview_widget(ticker):
         "enable_publishing": false,
         "hide_side_toolbar": false,
         "allow_symbol_change": true,
-        "details": true,
-        "hotlist": true,
-        "calendar": true,
+        "details": false,
+        "hotlist": false,
+        "calendar": false,
+        "studies": {studies_js},
         "container_id": "tradingview_chart"
       }}
       );
       </script>
     </div>
-    <!-- TradingView Widget END -->
     """
-    components.html(widget_code, height=660, scrolling=False)
+
+components.html(get_tradingview_widget(st.session_state.selected_ticker, strategy), height=585, scrolling=False)
 
 # -------------------------------------------------------------------
-# MAIN CONTENT AREA
+# BOTTOM SECTION: TRADE & RISK CALCULATOR
 # -------------------------------------------------------------------
-st.title(f"📈 {active_ticker} | TradingView Command Center")
+st.markdown("---")
+st.markdown("### 🧮 Trade & Risiko-Manager")
 
-tab_chart, tab_scanner = st.tabs(["📉 TradingView Chart", "🔍 Screener & Watchlist"])
+c1, c2, c3, c4 = st.columns(4)
 
-# TAB 1: ECHTES TRADINGVIEW CHART
-with tab_chart:
-    st.markdown(f"**Aktive Strategie:** `{strategy}` | **Symbol:** `{active_ticker}`")
-    
-    # Echte TradingView Umgebung laden
-    render_tradingview_widget(active_ticker)
+with c1:
+    capital = st.number_input("Eingesetztes Kapital (€):", value=2000, step=250)
+with c2:
+    horizon = st.selectbox("Anlagehorizont:", ["Intraday", "1-3 Tage (Swing)", "1-4 Wochen", "1-3 Monate (Optionen)"])
+with c3:
+    max_risk_pct = st.number_input("Max. Risiko (%):", value=2.0, step=0.5)
+with c4:
+    target_profit_pct = st.number_input("Ziel-Gewinn (%):", value=6.0, step=1.0)
 
-# TAB 2: SCREENER
-with tab_scanner:
-    st.subheader("Markt-Screener")
-    if st.button("🚀 Scannen starten", type="primary"):
-        st.info("Scanner wird ausgeführt...")
-        tickers = ["NVDA", "AAPL", "MSFT", "AMZN", "GOOGL", "TSLA"] if market == "USA 🇺🇸" else ["SAP.DE", "SIE.DE", "ALV.DE"]
-        
-        results = []
-        for sym in tickers:
-            try:
-                t = yf.Ticker(sym)
-                h = t.history(period="1mo")
-                if not h.empty:
-                    cp = h['Close'].iloc[-1]
-                    chg = ((cp - h['Close'].iloc[-2]) / h['Close'].iloc[-2]) * 100
-                    results.append({"Ticker": sym, "Kurs": round(cp, 2), "Veränderung (%)": round(chg, 2)})
-            except:
-                pass
-        
-        if results:
-            st.dataframe(pd.DataFrame(results), use_container_width=True)
+# Calculations
+max_loss_eur = capital * (max_risk_pct / 100.0)
+max_profit_eur = capital * (target_profit_pct / 100.0)
+crv = round(target_profit_pct / max_risk_pct, 2) if max_risk_pct > 0 else 0
 
-    
+st.info(f"📊 **Ergebnis:** Max. Verlust: **-{max_loss_eur:.2f} €** | Max. Gewinn: **+{max_profit_eur:.2f} €** | Chance-Risiko-Verhältnis (CRV): **{crv}**")
