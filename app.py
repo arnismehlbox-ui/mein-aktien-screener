@@ -4,7 +4,7 @@ import yfinance as yf
 import pandas as pd
 
 # -------------------------------------------------------------------
-# PAGE CONFIG & CSS OPTIMIERUNG
+# PAGE CONFIG & STYLING
 # -------------------------------------------------------------------
 st.set_page_config(page_title="Trading Hub", layout="wide", initial_sidebar_state="collapsed")
 
@@ -16,38 +16,57 @@ st.markdown("""
     header {visibility: hidden;}
     footer {visibility: hidden;}
     
+    /* Transparente Zonen für Trade-Signale */
     .trade-box-tp { background-color: rgba(38, 166, 154, 0.15); border-left: 5px solid #26a69a; padding: 12px; border-radius: 6px; margin-bottom: 8px; }
     .trade-box-entry { background-color: rgba(41, 98, 255, 0.15); border-left: 5px solid #2962ff; padding: 12px; border-radius: 6px; margin-bottom: 8px; }
     .trade-box-sl { background-color: rgba(239, 83, 80, 0.15); border-left: 5px solid #ef5350; padding: 12px; border-radius: 6px; margin-bottom: 8px; }
+    .trade-box-info { background-color: rgba(255, 193, 7, 0.15); border-left: 5px solid #ffc107; padding: 10px; border-radius: 6px; margin-bottom: 8px; }
 </style>
 """, unsafe_allow_html=True)
 
-# Session State
+# -------------------------------------------------------------------
+# SESSION STATE (SPEICHERBARE WATCHLIST & TICKER)
+# -------------------------------------------------------------------
+if "watchlists" not in st.session_state:
+    st.session_state.watchlists = {
+        "Tech-Giganten": ["NVDA", "AAPL", "MSFT", "AMZN", "GOOGL", "TSLA", "PLTR"],
+        "Deutschland (DAX)": ["SAP.DE", "SIE.DE", "ALV.DE", "BMW.DE", "DTE.DE"],
+        "Meine Favoriten": ["NVDA", "PLTR", "SAP.DE"]
+    }
+
 if "selected_ticker" not in st.session_state:
     st.session_state.selected_ticker = "NVDA"
 
 # -------------------------------------------------------------------
-# KOPFZEILE: WATCHLIST & STRATEGIE
+# WATCHLIST & TICKER AUSWAHL
 # -------------------------------------------------------------------
-st.markdown(f"<h3 style='margin:0; padding:0; color:#2962ff; text-align:center;'>⚡ {st.session_state.selected_ticker}</h3>", unsafe_allow_html=True)
+st.markdown("<h3 style='margin:0; text-align:center; color:#2962ff;'>⚡ Trading Command Center</h3>", unsafe_allow_html=True)
 
-c1, c2 = st.columns(2)
-with c1:
-    watchlist = ["-- Eigene Eingabe --", "NVDA", "AAPL", "MSFT", "AMZN", "GOOGL", "TSLA", "PLTR", "SAP.DE", "SIE.DE"]
-    selection = st.selectbox("📋 Watchlist", watchlist, label_visibility="collapsed")
+col_wl_sel, col_sym_sel = st.columns(2)
 
-with c2:
-    if selection == "-- Eigene Eingabe --":
-        manual = st.text_input("🔍 Suche:", value=st.session_state.selected_ticker, label_visibility="collapsed").strip().upper()
-        if manual:
-            st.session_state.selected_ticker = manual
-    else:
-        st.session_state.selected_ticker = selection
+with col_wl_sel:
+    wl_name = st.selectbox("📁 Watchlist wählen:", list(st.session_state.watchlists.keys()))
+    
+with col_sym_sel:
+    current_list = st.session_state.watchlists[wl_name]
+    ticker_choice = st.selectbox("🎯 Aktie aus Watchlist:", current_list)
+    st.session_state.selected_ticker = ticker_choice
 
+# Neue Ticker zur aktuellen Watchlist hinzufügen
+with st.expander("➕ Ticker zur Watchlist hinzufügen"):
+    new_symbol = st.text_input("Symbol eingeben (z.B. META, BABA, RHM.DE):").strip().upper()
+    if st.button("Hinzufügen") and new_symbol:
+        if new_symbol not in st.session_state.watchlists[wl_name]:
+            st.session_state.watchlists[wl_name].append(new_symbol)
+            st.session_state.selected_ticker = new_symbol
+            st.rerun()
+
+# -------------------------------------------------------------------
+# STRATEGIE AUSWAHL
+# -------------------------------------------------------------------
 strategy = st.selectbox(
-    "Strategie Indikatoren:",
-    ["Swing Trading (EMA & RSI)", "Momentum (RSI & MACD)", "Volumen Ausbruch (Volume Profile)"],
-    label_visibility="collapsed"
+    "📊 Handelsstrategie wählen:",
+    ["Swing Trading (SL: 5% | TP: 15%)", "Momentum / Breakout (SL: 3% | TP: 9%)", "Konservativ (SL: 2% | TP: 4%)"]
 )
 
 # -------------------------------------------------------------------
@@ -61,19 +80,15 @@ def get_tradingview_widget(ticker, strat):
     else:
         tv_symbol = f"NYSE:{ticker}"
 
-    studies = ["MASimple@tv-basicstudies"]
+    studies = ["MASimple@tv-basicstudies", "RSI@tv-basicstudies"]
     if "Momentum" in strat:
         studies = ["RSI@tv-basicstudies", "MACD@tv-basicstudies"]
-    elif "Volumen" in strat:
-        studies = ["Volume@tv-basicstudies", "VPVR@tv-basicstudies"]
-    elif "Swing" in strat:
-        studies = ["STD;EMA", "RSI@tv-basicstudies"]
 
     studies_js = str(studies).replace("'", '"')
 
     return f"""
     <div class="tradingview-widget-container" style="height:100%;width:100%;">
-      <div id="tradingview_chart" style="height:500px;width:100%;"></div>
+      <div id="tradingview_chart" style="height:480px;width:100%;"></div>
       <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
       <script type="text/javascript">
       new TradingView.widget({{
@@ -86,65 +101,93 @@ def get_tradingview_widget(ticker, strat):
     </div>
     """
 
-components.html(get_tradingview_widget(st.session_state.selected_ticker, strategy), height=510, scrolling=False)
+components.html(get_tradingview_widget(st.session_state.selected_ticker, strategy), height=490, scrolling=False)
 
 # -------------------------------------------------------------------
-# TRADE & RISIKO-MANAGER
+# AUTOMATISCHER TRADE & RISIKO MANAGER
 # -------------------------------------------------------------------
-st.markdown("### 🧮 Trade & Risiko Manager")
+st.markdown("### 🧮 Auto Trade-Manager")
 
-col_cap, col_en = st.columns(2)
-col_sl, col_tp = st.columns(2)
+# Nur noch der Kapital-Input!
+capital = st.number_input("💰 Dein einzusetzendes Kapital (€):", value=2000.0, step=100.0)
 
-with col_cap:
-    capital = st.number_input("💰 Kapital (€)", value=2000.0, step=100.0)
-with col_en:
-    entry = st.number_input("🔵 Kauf (Entry)", value=100.0, step=1.0)
-with col_sl:
-    sl = st.number_input("🔴 Stop Loss", value=95.0, step=1.0)
-with col_tp:
-    tp = st.number_input("🟢 Take Profit", value=115.0, step=1.0)
+# Kurs abrufen für Berechnungen
+symbol = st.session_state.selected_ticker
+current_price = 100.0  # Fallback
 
-shares = capital / entry if entry > 0 else 0
-risk_per_share = entry - sl
-profit_per_share = tp - entry
+try:
+    ticker_data = yf.Ticker(symbol).history(period="1d")
+    if not ticker_data.empty:
+        current_price = float(ticker_data['Close'].iloc[-1])
+except Exception:
+    pass
 
-total_risk = risk_per_share * shares if risk_per_share > 0 else 0
-total_profit = profit_per_share * shares if profit_per_share > 0 else 0
-crv = total_profit / total_risk if total_risk > 0 else 0
+# Strategie-Parameter festlegen
+if "Swing Trading" in strategy:
+    sl_pct, tp_pct = 0.05, 0.15
+elif "Momentum" in strategy:
+    sl_pct, tp_pct = 0.03, 0.09
+else:  # Konservativ
+    sl_pct, tp_pct = 0.02, 0.04
 
+# Automatische Berechnung der Order-Marken
+limit_order = current_price
+sl_price = current_price * (1 - sl_pct)
+tp_price = current_price * (1 + tp_pct)
+
+shares = int(capital // limit_order) if limit_order > 0 else 0
+invested = shares * limit_order
+max_risk = (limit_order - sl_price) * shares
+max_profit = (tp_price - limit_order) * shares
+crv = max_profit / max_risk if max_risk > 0 else 0
+
+# Anzeige der berechneten Trades
 st.markdown(f"""
+<div class="trade-box-info">
+    <b>ℹ️ Aktueller Marktpreis ({symbol}):</b> {current_price:.2f} | <b>Investitionsvolumen:</b> {invested:.2f} €
+</div>
 <div class="trade-box-tp">
-    <strong style="color:#26a69a;">🎯 Take Profit (TP)</strong><br>
-    Verkauf bei: <b>{tp:.2f}</b> | Möglicher Gewinn: <b>+{total_profit:.2f} €</b>
+    <strong style="color:#26a69a;">🟢 Take Profit (TP Target)</strong><br>
+    Verkaufssignal bei: <b>{tp_price:.2f}</b> (+{tp_pct*100:.0f}%) | Ziel-Gewinn: <b>+{max_profit:.2f} €</b>
 </div>
 <div class="trade-box-entry">
-    <strong style="color:#2962ff;">🔵 Entry (Kaufzone)</strong><br>
-    Kauf bei: <b>{entry:.2f}</b> | Positionsgröße: <b>{shares:.2f} Stück</b>
+    <strong style="color:#2962ff;">🔵 Limit Buy Order (Einstieg)</strong><br>
+    Kauf-Order setzen bei: <b>{limit_order:.2f}</b> | Empfohlene Stückzahl: <b>{shares} Stück</b>
 </div>
 <div class="trade-box-sl">
-    <strong style="color:#ef5350;">🛑 Stop Loss (SL)</strong><br>
-    Ausstieg bei: <b>{sl:.2f}</b> | Max. Risiko: <b>-{total_risk:.2f} €</b> | CRV: <b>{crv:.2f}</b>
+    <strong style="color:#ef5350;">🔴 Stop Loss (SL Absicherung)</strong><br>
+    Stopp setzen bei: <b>{sl_price:.2f}</b> (-{sl_pct*100:.0f}%) | Max. Risiko: <b>-{max_risk:.2f} €</b> | CRV: <b>1:{crv:.1f}</b>
 </div>
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------------
-# SCREENER
+# PROMINENTER MARKT-SCREENER
 # -------------------------------------------------------------------
-with st.expander("🔍 **Live Markt-Screener & Watchlist (Ausklappen)**", expanded=False):
-    if st.button("🚀 Live-Scan starten"):
-        scan_symbols = ["NVDA", "AAPL", "MSFT", "AMZN", "TSLA", "PLTR", "SAP.DE", "SIE.DE"]
-        results = []
+st.markdown("---")
+st.markdown("### 🔍 Markt-Screener (Direktübersicht)")
+
+if st.button("🚀 Live-Scan für ausgewählte Watchlist starten", type="primary"):
+    scan_symbols = st.session_state.watchlists[wl_name]
+    scan_results = []
+    
+    with st.spinner("Scanne Watchlist-Kurse..."):
         for sym in scan_symbols:
             try:
                 df = yf.Ticker(sym).history(period="1mo")
-                if not df.empty:
-                    cp = df['Close'].iloc[-1]
-                    chg = ((cp - df['Close'].iloc[-2]) / df['Close'].iloc[-2]) * 100
-                    sma20 = df['Close'].rolling(20).mean().iloc[-1] if len(df) >= 20 else cp
-                    trend = "🟢" if cp > sma20 else "🔴"
-                    results.append({"Ticker": sym, "Kurs": round(cp, 2), "24h %": round(chg, 2), "Trend": trend})
+                if not df.empty and len(df) >= 20:
+                    cp = float(df['Close'].iloc[-1])
+                    chg = float(((cp - df['Close'].iloc[-2]) / df['Close'].iloc[-2]) * 100)
+                    sma20 = float(df['Close'].rolling(20).mean().iloc[-1])
+                    trend = "🟢 Bullisch" if cp > sma20 else "🔴 Bärisch"
+                    
+                    scan_results.append({
+                        "Ticker": sym, 
+                        "Kurs": f"{cp:.2f}", 
+                        "24h Trend": f"{chg:+.2f}%", 
+                        "Signal": trend
+                    })
             except Exception:
                 pass
-        if results:
-            st.dataframe(pd.DataFrame(results), use_container_width=True)
+
+    if scan_results:
+        st.dataframe(pd.DataFrame(scan_results), use_container_width=True)
