@@ -6,7 +6,7 @@ import pandas as pd
 st.set_page_config(page_title="Aktien-Screener Pro", layout="wide", page_icon="📈")
 
 st.title("📈 Mein persönlicher Börsen-Screener Pro")
-st.caption("Echtzeit-Analyse für Trading-Setups (RVOL, Trends & eigene Ticker)")
+st.caption("Echtzeit-Analyse für Trading-Setups (RVOL, RSI-14, Trends & eigene Ticker)")
 
 # Marktauswahl direkt auf der Hauptseite
 markt = st.radio("Wähle den Markt:", ("Europa 🇪🇺", "USA 🇺🇸", "Kombiniert (EU + USA)"), horizontal=True)
@@ -31,7 +31,7 @@ custom_input = st.text_input(
 # Sortierung
 sort_by = st.selectbox(
     "Sortieren nach:",
-    ("Veränderung (%)", "RVOL", "Abstand 52W-Hoch (%)", "Volumen (Tsd)")
+    ("Veränderung (%)", "RVOL", "RSI (14)", "Abstand 52W-Hoch (%)", "Volumen (Tsd)")
 )
 
 # Ticker zusammenführen
@@ -65,6 +65,16 @@ if st.button("🚀 Scan jetzt starten", type="primary"):
                 avg_vol_20 = hist['Volume'].iloc[-21:-1].mean()
                 rvol = (current_vol / avg_vol_20) if avg_vol_20 > 0 else 0
                 
+                # RSI (14 Tage)
+                delta = hist['Close'].diff()
+                gain = delta.clip(lower=0)
+                loss = -delta.clip(upper=0)
+                avg_gain = gain.ewm(alpha=1/14, min_periods=14, adjust=False).mean()
+                avg_loss = loss.ewm(alpha=1/14, min_periods=14, adjust=False).mean()
+                rs = avg_gain / avg_loss
+                rsi_series = 100 - (100 / (1 + rs))
+                current_rsi = rsi_series.iloc[-1]
+                
                 # 52W Hoch & Abstand
                 high_52 = hist['High'].max()
                 dist_high_pct = ((current_price - high_52) / high_52) * 100
@@ -83,6 +93,7 @@ if st.button("🚀 Scan jetzt starten", type="primary"):
                     "Kurs": round(current_price, 2),
                     "Veränderung (%)": round(change_pct, 2),
                     "RVOL": round(rvol, 2),
+                    "RSI (14)": round(current_rsi, 1),
                     "Abstand SMA20 (%)": round(dist_sma20, 2),
                     "Abstand 52W-Hoch (%)": round(dist_high_pct, 2),
                     "Volumen (Tsd)": int(current_vol / 1000),
@@ -112,6 +123,7 @@ if st.button("🚀 Scan jetzt starten", type="primary"):
                 "Abstand SMA20 (%)": st.column_config.NumberColumn(format="%.2f %%"),
                 "Abstand 52W-Hoch (%)": st.column_config.NumberColumn(format="%.2f %%"),
                 "RVOL": st.column_config.NumberColumn(format="%.2f x"),
+                "RSI (14)": st.column_config.NumberColumn(format="%.1f"),
                 "Kurs": st.column_config.NumberColumn(format="%.2f"),
                 "Volumen (Tsd)": st.column_config.NumberColumn(format="%d k"),
             },
