@@ -16,7 +16,6 @@ st.markdown("""
     header {visibility: hidden;}
     footer {visibility: hidden;}
     
-    /* Transparente Zonen für Trade-Signale */
     .trade-box-tp { background-color: rgba(38, 166, 154, 0.15); border-left: 5px solid #26a69a; padding: 12px; border-radius: 6px; margin-bottom: 8px; }
     .trade-box-entry { background-color: rgba(41, 98, 255, 0.15); border-left: 5px solid #2962ff; padding: 12px; border-radius: 6px; margin-bottom: 8px; }
     .trade-box-sl { background-color: rgba(239, 83, 80, 0.15); border-left: 5px solid #ef5350; padding: 12px; border-radius: 6px; margin-bottom: 8px; }
@@ -25,13 +24,17 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------------
-# SESSION STATE (SPEICHERBARE WATCHLIST & TICKER)
+# WATCHLISTS MIT DEINEN INDIZES
 # -------------------------------------------------------------------
 if "watchlists" not in st.session_state:
     st.session_state.watchlists = {
-        "Tech-Giganten": ["NVDA", "AAPL", "MSFT", "AMZN", "GOOGL", "TSLA", "PLTR"],
-        "Deutschland (DAX)": ["SAP.DE", "SIE.DE", "ALV.DE", "BMW.DE", "DTE.DE"],
-        "Meine Favoriten": ["NVDA", "PLTR", "SAP.DE"]
+        "Meine Favoriten": ["NVDA", "PLTR", "SAP.DE"],
+        "DAX (Deutschland Top 40)": ["SAP.DE", "SIE.DE", "ALV.DE", "DTE.DE", "BMW.DE", "MBG.DE", "MUV2.DE", "BAS.DE"],
+        "MDAX & SDAX (DE Mid/Small)": ["RHM.DE", "LHA.DE", "TKA.DE", "PUM.DE", "HFG.DE", "FPE.DE"],
+        "Dow Jones (US Top 30)": ["AAPL", "MSFT", "V", "JNJ", "WMT", "JPM", "PG", "DIS", "HD", "UNH"],
+        "S&P 500 (US Schwergewichte)": ["NVDA", "AAPL", "MSFT", "AMZN", "GOOGL", "META", "TSLA", "AVGO", "COST", "AMD"],
+        "EURO STOXX 50 (Europa)": ["ASML.AS", "MC.PA", "SAP.DE", "OR.PA", "SAN.MC", "SHEL.L", "TTE.PA"],
+        "Russell 2000 (US Small Caps)": ["PLTR", "SMCI", "CELH", "SOFI", "HOOD", "RBLX"]
     }
 
 if "selected_ticker" not in st.session_state:
@@ -45,16 +48,15 @@ st.markdown("<h3 style='margin:0; text-align:center; color:#2962ff;'>⚡ Trading
 col_wl_sel, col_sym_sel = st.columns(2)
 
 with col_wl_sel:
-    wl_name = st.selectbox("📁 Watchlist wählen:", list(st.session_state.watchlists.keys()))
+    wl_name = st.selectbox("📁 Index / Watchlist wählen:", list(st.session_state.watchlists.keys()))
     
 with col_sym_sel:
     current_list = st.session_state.watchlists[wl_name]
-    ticker_choice = st.selectbox("🎯 Aktie aus Watchlist:", current_list)
+    ticker_choice = st.selectbox("🎯 Aktie aus Liste:", current_list)
     st.session_state.selected_ticker = ticker_choice
 
-# Neue Ticker zur aktuellen Watchlist hinzufügen
-with st.expander("➕ Ticker zur Watchlist hinzufügen"):
-    new_symbol = st.text_input("Symbol eingeben (z.B. META, BABA, RHM.DE):").strip().upper()
+with st.expander("➕ Ticker zur aktuellen Liste hinzufügen"):
+    new_symbol = st.text_input("Symbol eingeben (z.B. BABA, NFLX, CON.DE):").strip().upper()
     if st.button("Hinzufügen") and new_symbol:
         if new_symbol not in st.session_state.watchlists[wl_name]:
             st.session_state.watchlists[wl_name].append(new_symbol)
@@ -73,9 +75,18 @@ strategy = st.selectbox(
 # TRADINGVIEW CHART
 # -------------------------------------------------------------------
 def get_tradingview_widget(ticker, strat):
+    # Börsenplatz-Zuordnung
     if ".DE" in ticker:
         tv_symbol = f"XETR:{ticker.replace('.DE', '')}"
-    elif ticker in ["NVDA", "AAPL", "GOOGL", "MSFT", "AMZN", "META", "TSLA", "AMD", "PLTR"]:
+    elif ".PA" in ticker:
+        tv_symbol = f"EURONEXT:{ticker.replace('.PA', '')}"
+    elif ".AS" in ticker:
+        tv_symbol = f"EURONEXT:{ticker.replace('.AS', '')}"
+    elif ".MC" in ticker:
+        tv_symbol = f"BME:{ticker.replace('.MC', '')}"
+    elif ".L" in ticker:
+        tv_symbol = f"LSE:{ticker.replace('.L', '')}"
+    elif ticker in ["NVDA", "AAPL", "GOOGL", "MSFT", "AMZN", "META", "TSLA", "AMD", "PLTR", "AVGO", "COST"]:
         tv_symbol = f"NASDAQ:{ticker}"
     else:
         tv_symbol = f"NYSE:{ticker}"
@@ -108,12 +119,10 @@ components.html(get_tradingview_widget(st.session_state.selected_ticker, strateg
 # -------------------------------------------------------------------
 st.markdown("### 🧮 Auto Trade-Manager")
 
-# Nur noch der Kapital-Input!
 capital = st.number_input("💰 Dein einzusetzendes Kapital (€):", value=2000.0, step=100.0)
 
-# Kurs abrufen für Berechnungen
 symbol = st.session_state.selected_ticker
-current_price = 100.0  # Fallback
+current_price = 100.0
 
 try:
     ticker_data = yf.Ticker(symbol).history(period="1d")
@@ -122,15 +131,13 @@ try:
 except Exception:
     pass
 
-# Strategie-Parameter festlegen
 if "Swing Trading" in strategy:
     sl_pct, tp_pct = 0.05, 0.15
 elif "Momentum" in strategy:
     sl_pct, tp_pct = 0.03, 0.09
-else:  # Konservativ
+else:
     sl_pct, tp_pct = 0.02, 0.04
 
-# Automatische Berechnung der Order-Marken
 limit_order = current_price
 sl_price = current_price * (1 - sl_pct)
 tp_price = current_price * (1 + tp_pct)
@@ -141,7 +148,6 @@ max_risk = (limit_order - sl_price) * shares
 max_profit = (tp_price - limit_order) * shares
 crv = max_profit / max_risk if max_risk > 0 else 0
 
-# Anzeige der berechneten Trades
 st.markdown(f"""
 <div class="trade-box-info">
     <b>ℹ️ Aktueller Marktpreis ({symbol}):</b> {current_price:.2f} | <b>Investitionsvolumen:</b> {invested:.2f} €
@@ -161,7 +167,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------------
-# PROMINENTER MARKT-SCREENER
+# SCREENER
 # -------------------------------------------------------------------
 st.markdown("---")
 st.markdown("### 🔍 Markt-Screener (Direktübersicht)")
@@ -170,7 +176,7 @@ if st.button("🚀 Live-Scan für ausgewählte Watchlist starten", type="primary
     scan_symbols = st.session_state.watchlists[wl_name]
     scan_results = []
     
-    with st.spinner("Scanne Watchlist-Kurse..."):
+    with st.spinner("Scanne Kurse..."):
         for sym in scan_symbols:
             try:
                 df = yf.Ticker(sym).history(period="1mo")
