@@ -35,7 +35,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 1. WATCHLISTS & STRATEGIEN DEFINITION
+# 1. WATCHLISTS & STRATEGIEN DEFINITION (INKL. HALTEDAUER)
 # ---------------------------------------------------------
 WATCHLISTS = {
     "DAX 40 (DE)": [
@@ -72,25 +72,29 @@ STRATEGIES = {
         "ema_fast": 20,
         "ema_slow": 50,
         "sl_factor": 0.97,
-        "desc": "Rücksetzer nahe EMA 20. SL wird automatisch unter dem Support gesetzt."
-    },
-    "Trendfolge & Supertrend (Swing)": {
-        "ema_fast": 20,
-        "ema_slow": 50,
-        "sl_factor": 0.95,
-        "desc": "Stetiger Aufwärtstrend über EMA 20 & 50."
+        "holding_time": "3 bis 10 Tage (Klassischer Swing Trade)",
+        "desc": "Rücksetzer nahe EMA 20 im intakten Aufwärtstrend."
     },
     "Breakout / Allzeithoch (Momentum)": {
         "ema_fast": 10,
         "ema_slow": 30,
         "sl_factor": 0.96,
-        "desc": "Momentum-Werte nahe am Periodenhoch."
+        "holding_time": "2 bis 8 Tage (Zügiger Impuls-Trade)",
+        "desc": "Momentum-Ausbruch nahe am Periodenhoch."
+    },
+    "Trendfolge & Supertrend (Swing)": {
+        "ema_fast": 20,
+        "ema_slow": 50,
+        "sl_factor": 0.95,
+        "holding_time": "1 bis 4 Wochen (Mittelfristiger Trend)",
+        "desc": "Stetiger Aufwärtstrend über EMA 20 & 50 reiten."
     },
     "Qualitäts- & Value-Trend": {
         "ema_fast": 50,
         "ema_slow": 200,
         "sl_factor": 0.93,
-        "desc": "Übergeordneter Trend (EMA 50 / EMA 200)."
+        "holding_time": "1 bis 6 Monate (Positions-Trading)",
+        "desc": "Übergeordneter Großtrend (EMA 50 / EMA 200)."
     }
 }
 
@@ -112,6 +116,8 @@ if "calculated_sl" not in st.session_state:
     st.session_state["calculated_sl"] = 174.60
 if "target_crv" not in st.session_state:
     st.session_state["target_crv"] = 2.00
+if "active_strategy" not in st.session_state:
+    st.session_state["active_strategy"] = list(STRATEGIES.keys())[0]
 
 # ---------------------------------------------------------
 # 3. HELPER FUNCTIONS
@@ -218,14 +224,13 @@ with tab1:
     else:
         tickers_to_scan = WATCHLISTS[selected_watchlist]
 
-    with st.expander("⚙️ Strategie & Zeiteinheit anpassen", expanded=False):
+    with st.expander("⚙️ Strategie & Zeiteinheit anpassen", expanded=True):
         selected_strategy = st.selectbox("Strategie:", list(STRATEGIES.keys()))
         selected_tf = st.selectbox("Zeiteinheit:", list(TIMEFRAMES.keys()))
         
-    if 'selected_strategy' not in locals():
-        selected_strategy = list(STRATEGIES.keys())[0]
-    if 'selected_tf' not in locals():
-        selected_tf = list(TIMEFRAMES.keys())[0]
+        # Haltedauer & Beschreibung anzeigen
+        st.info(f"⏱️ **Ungefähre Haltedauer:** {STRATEGIES[selected_strategy]['holding_time']}\n\nℹ️ {STRATEGIES[selected_strategy]['desc']}")
+        st.session_state["active_strategy"] = selected_strategy
 
     if st.button("🚀 Scan starten", use_container_width=True):
         with st.spinner(f"Scanne {len(tickers_to_scan)} Werte..."):
@@ -291,7 +296,11 @@ with tab2:
     risk_per_share = entry - sl
     tp = entry + (risk_per_share * target_crv)
     
+    curr_strat_key = st.session_state.get("active_strategy", list(STRATEGIES.keys())[0])
+    curr_holding = STRATEGIES[curr_strat_key]["holding_time"]
+    
     st.markdown("#### 🔒 Ausgewählte Strategie-Parameter")
+    st.text_input("⏱️ Geplante Haltedauer:", value=curr_holding, disabled=True)
     st.number_input("Einstieg / Limit Order (€/$):", value=float(entry), disabled=True)
     st.number_input("Stop Loss (€/$) [Strategie-Fix]:", value=float(sl), disabled=True)
     st.number_input("Take Profit (€/$) [Aus CRV berechnet]:", value=float(round(tp, 2)), disabled=True)
