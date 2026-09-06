@@ -13,12 +13,24 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# CSS-Anpassungen für gute Lesbarkeit & Mobile Touch
 st.markdown("""
     <style>
     .block-container { padding-top: 1rem; padding-bottom: 2rem; padding-left: 0.5rem; padding-right: 0.5rem; }
     div[data-baseweb="select"] { font-size: 16px; }
     button { min-height: 48px; font-size: 16px !important; }
-    input:disabled { color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; opacity: 0.85; }
+    
+    /* Optimierter Kontrast für deaktivierte/schreibgeschützte Felder */
+    input:disabled {
+        color: #000000 !important;
+        -webkit-text-fill-color: #000000 !important;
+        font-weight: 700 !important;
+        opacity: 1 !important;
+    }
+    div[data-baseweb="input"] {
+        background-color: #e2e8f0 !important;
+        border-radius: 8px !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -59,25 +71,25 @@ STRATEGIES = {
     "MPS (Market Pullback Setup - EMA20)": {
         "ema_fast": 20,
         "ema_slow": 50,
-        "sl_factor": 0.97,  # SL knapp unter EMA 50 / ca. 3% Puffer
+        "sl_factor": 0.97,
         "desc": "Rücksetzer nahe EMA 20. SL wird automatisch unter dem Support gesetzt."
     },
     "Trendfolge & Supertrend (Swing)": {
         "ema_fast": 20,
         "ema_slow": 50,
-        "sl_factor": 0.95,  # SL ca. 5% unter Einstieg / EMA 50
+        "sl_factor": 0.95,
         "desc": "Stetiger Aufwärtstrend über EMA 20 & 50."
     },
     "Breakout / Allzeithoch (Momentum)": {
         "ema_fast": 10,
         "ema_slow": 30,
-        "sl_factor": 0.96,  # Enge Absicherung ca. 4%
+        "sl_factor": 0.96,
         "desc": "Momentum-Werte nahe am Periodenhoch."
     },
     "Qualitäts- & Value-Trend": {
         "ema_fast": 50,
         "ema_slow": 200,
-        "sl_factor": 0.93,  # Weiterer SL ca. 7%
+        "sl_factor": 0.93,
         "desc": "Übergeordneter Trend (EMA 50 / EMA 200)."
     }
 }
@@ -131,8 +143,6 @@ def run_scan(watchlist_tickers, strategy_key, timeframe_key):
         ema_slow = float(df["Close"].ewm(span=strat["ema_slow"]).mean().iloc[-1])
         
         abstand_ema = ((close - ema_fast) / ema_fast) * 100
-        
-        # Strategiebasierte SL-Berechnung
         sl_price = min(ema_slow, close * strat["sl_factor"])
         
         if close > ema_fast and ema_fast > ema_slow:
@@ -254,7 +264,7 @@ with tab2:
     render_tv_chart_mobile(st.session_state["selected_ticker"], tv_tf)
     
     st.markdown("---")
-    st.subheader("🧮 Positionsrechner (Fixes Setup)")
+    st.subheader("🧮 Positionsrechner")
     
     calc_mode = st.radio("Berechnungsmethode:", ["Risikobasiert (% Depot)", "Feste Investition (€)"])
     
@@ -266,7 +276,6 @@ with tab2:
         invest_amount = st.number_input("Anlagebetrag (€):", value=1000.0, step=100.0)
         max_risk_eur = None
 
-    # CRV Steuerung
     target_crv = st.number_input(
         "🎯 Wunsch-CRV (Anpassbar):", 
         value=float(st.session_state["target_crv"]), 
@@ -276,12 +285,10 @@ with tab2:
     )
     st.session_state["target_crv"] = target_crv
 
-    # Feste, schreibgeschützte Werte (Strategiebasiert)
+    # Feste Parameter aus Strategie
     entry = st.session_state["entry_price"]
     sl = st.session_state["calculated_sl"]
     risk_per_share = entry - sl
-    
-    # Automatische TP Berechnung basierend auf CRV
     tp = entry + (risk_per_share * target_crv)
     
     st.markdown("#### 🔒 Ausgewählte Strategie-Parameter")
@@ -304,9 +311,10 @@ with tab2:
         col_m1, col_m2 = st.columns(2)
         with col_m1:
             st.metric("📦 Stückzahl", f"{shares} Stk.")
-            st.metric("🛡️ Risiko", f"{max_risk_eur:,.2f} €")
+            st.metric("🔴 Max. Verlust", f"{max_risk_eur:,.2f} €")
+            st.metric("💰 Gesamtvolumen", f"{total_volume:,.2f} €")
         with col_m2:
-            st.metric("💰 Volumen", f"{total_volume:,.2f} €")
             st.metric("⚖️ Effektives CRV", f"1 : {target_crv:.2f}")
+            st.metric("🟢 Max. Gewinn", f"{total_profit:,.2f} €")
     else:
         st.error("Ungültiges Setup: Stop Loss liegt nicht unter dem Einstiegskurs.")
