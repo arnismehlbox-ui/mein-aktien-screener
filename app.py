@@ -35,7 +35,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 1. WATCHLISTS & STRATEGIEN DEFINITION (INKL. HALTEDAUER)
+# 1. WATCHLISTS & STRATEGIEN DEFINITION
 # ---------------------------------------------------------
 WATCHLISTS = {
     "DAX 40 (DE)": [
@@ -172,7 +172,7 @@ def run_scan(watchlist_tickers, strategy_key, timeframe_key):
         
     return pd.DataFrame(results)
 
-def render_tv_chart_mobile(ticker, tv_interval):
+def render_tv_chart_mobile(ticker, tv_interval, ema_fast=20, ema_slow=50):
     tv_symbol = ticker
     if ticker.endswith(".DE"):
         tv_symbol = f"XETR:{ticker.replace('.DE', '')}"
@@ -184,8 +184,8 @@ def render_tv_chart_mobile(ticker, tv_interval):
         tv_symbol = f"BME:{ticker.replace('.MC', '')}"
     
     chart_html = f"""
-    <div class="tradingview-widget-container" style="height:400px;width:100%;">
-      <div id="tradingview_chart" style="height:400px;width:100%;"></div>
+    <div class="tradingview-widget-container" style="height:480px;width:100%;">
+      <div id="tradingview_chart" style="height:480px;width:100%;"></div>
       <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
       <script type="text/javascript">
       new TradingView.widget({{
@@ -198,14 +198,28 @@ def render_tv_chart_mobile(ticker, tv_interval):
         "locale": "de_DE",
         "toolbar_bg": "#f1f3f6",
         "enable_publishing": false,
-        "hide_side_toolbar": true,
+        "hide_side_toolbar": false,
         "allow_symbol_change": true,
-        "container_id": "tradingview_chart"
+        "container_id": "tradingview_chart",
+        "studies": [
+          {{
+            "id": "STD;EMA",
+            "inputs": {{
+              "length": {ema_fast}
+            }}
+          }},
+          {{
+            "id": "STD;EMA",
+            "inputs": {{
+              "length": {ema_slow}
+            }}
+          }}
+        ]
       }});
       </script>
     </div>
     """
-    components.html(chart_html, height=410)
+    components.html(chart_html, height=490)
 
 # ---------------------------------------------------------
 # 4. MAIN APP UI
@@ -228,7 +242,6 @@ with tab1:
         selected_strategy = st.selectbox("Strategie:", list(STRATEGIES.keys()))
         selected_tf = st.selectbox("Zeiteinheit:", list(TIMEFRAMES.keys()))
         
-        # Haltedauer & Beschreibung anzeigen
         st.info(f"⏱️ **Ungefähre Haltedauer:** {STRATEGIES[selected_strategy]['holding_time']}\n\nℹ️ {STRATEGIES[selected_strategy]['desc']}")
         st.session_state["active_strategy"] = selected_strategy
 
@@ -265,8 +278,15 @@ with tab1:
 with tab2:
     st.subheader(f"Wert: {st.session_state['selected_ticker']}")
     
+    # EMA-Werte basierend auf aktiver Strategie abrufen
+    curr_strat_key = st.session_state.get("active_strategy", list(STRATEGIES.keys())[0])
+    ema_fast = STRATEGIES[curr_strat_key]["ema_fast"]
+    ema_slow = STRATEGIES[curr_strat_key]["ema_slow"]
+    
     tv_tf = TIMEFRAMES[selected_tf]["tv_interval"] if 'selected_tf' in locals() else "D"
-    render_tv_chart_mobile(st.session_state["selected_ticker"], tv_tf)
+    
+    # Chart rendern inklusive Werkzeugen und EMA-Indikatoren
+    render_tv_chart_mobile(st.session_state["selected_ticker"], tv_tf, ema_fast, ema_slow)
     
     st.markdown("---")
     st.subheader("🧮 Positionsrechner")
@@ -290,13 +310,11 @@ with tab2:
     )
     st.session_state["target_crv"] = target_crv
 
-    # Feste Parameter aus Strategie
     entry = st.session_state["entry_price"]
     sl = st.session_state["calculated_sl"]
     risk_per_share = entry - sl
     tp = entry + (risk_per_share * target_crv)
     
-    curr_strat_key = st.session_state.get("active_strategy", list(STRATEGIES.keys())[0])
     curr_holding = STRATEGIES[curr_strat_key]["holding_time"]
     
     st.markdown("#### 🔒 Ausgewählte Strategie-Parameter")
