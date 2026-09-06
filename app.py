@@ -1,11 +1,10 @@
 import streamlit as st
-import pandas as pd
-import yfinance as yf
 import streamlit.components.v1 as components
+import pandas as pd
 
-# ---------------------------------------------------------
-# PAGE CONFIGURATION (MOBILE OPTIMIZED)
-# ---------------------------------------------------------
+# -----------------------------------------------------------------------------
+# 1. SEITEN-KONFIGURATION & LAYOUT (Mobil-optimiert)
+# -----------------------------------------------------------------------------
 st.set_page_config(
     page_title="MPS Mobile Scanner",
     page_icon="📱",
@@ -13,182 +12,78 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# CSS-Anpassungen für gute Lesbarkeit & Mobile Touch
+# Custom CSS für kompakte Mobil-Optik
 st.markdown("""
     <style>
-    .block-container { padding-top: 1rem; padding-bottom: 2rem; padding-left: 0.5rem; padding-right: 0.5rem; }
-    div[data-baseweb="select"] { font-size: 16px; }
-    button { min-height: 48px; font-size: 16px !important; }
-    
-    /* Optimierter Kontrast für deaktivierte/schreibgeschützte Felder */
-    input:disabled {
-        color: #000000 !important;
-        -webkit-text-fill-color: #000000 !important;
-        font-weight: 700 !important;
-        opacity: 1 !important;
+    .main .block-container {
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
     }
-    div[data-baseweb="input"] {
-        background-color: #e2e8f0 !important;
-        border-radius: 8px !important;
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        padding-left: 12px;
+        padding-right: 12px;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# ---------------------------------------------------------
-# 1. WATCHLISTS & STRATEGIEN DEFINITION
-# ---------------------------------------------------------
-WATCHLISTS = {
-    "DAX 40 (DE)": [
-        "SAP.DE", "SIE.DE", "ALV.DE", "DTE.DE", "AIR.DE", "MBG.DE", "BMW.DE", 
-        "BAS.DE", "BAYN.DE", "ADS.DE", "RWE.DE", "DB1.DE", "IFX.DE", "MUV2.DE",
-        "DTG.DE", "HEN3.DE", "EONG.DE", "MRK.DE", "VOW3.DE", "CON.DE"
-    ],
-    "MDAX (DE)": [
-        "LHA.DE", "EVK.DE", "HFG.DE", "PUG.DE", "G1A.DE", "TKA.DE", "DEQ.DE", "FPE3.DE", "KGX.DE"
-    ],
-    "SDAX (DE)": [
-        "S92.DE", "HDD.DE", "12D1.DE", "HAG.DE", "PFP.DE", "SOW.DE", "SNG.DE"
-    ],
-    "Euro Stoxx 50 (EU)": [
-        "ASML.AS", "MC.PA", "SAP.DE", "OR.PA", "TTE.PA", "SAN.MC", "SU.PA", "IBE.MC", "CDI.PA"
-    ],
-    "Dow Jones Industrial (US)": [
-        "AAPL", "MSFT", "UNH", "GS", "HD", "CAT", "AMZN", "V", "BA", "JNJ", "PG", "JPM", "CVX", "MCD", "WMT"
-    ],
-    "S&P 500 (US)": [
-        "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "BRK-B", "LLY", "TSLA", "AVGO", "JPM", "UNH", "XOM"
-    ],
-    "US Tech / Nasdaq 100 (US)": [
-        "AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "AVGO", "TSLA", "AMD", "COST", "NFLX", "TMUS"
-    ],
-    "Russell 2000 (US)": [
-        "IWM", "VTWO", "SMCI", "AAL", "MSTR", "CELH", "CROX", "RBLX"
-    ],
-    "Eigene Watchlist": []
-}
+st.title("📱 MPS Mobile Scanner")
 
-STRATEGIES = {
-    "MPS (Market Pullback Setup - EMA20)": {
-        "ema_fast": 20,
-        "ema_slow": 50,
-        "sl_factor": 0.97,
-        "holding_time": "3 bis 10 Tage (Klassischer Swing Trade)",
-        "desc": "Rücksetzer nahe EMA 20 im intakten Aufwärtstrend."
-    },
-    "Breakout / Allzeithoch (Momentum)": {
-        "ema_fast": 10,
-        "ema_slow": 30,
-        "sl_factor": 0.96,
-        "holding_time": "2 bis 8 Tage (Zügiger Impuls-Trade)",
-        "desc": "Momentum-Ausbruch nahe am Periodenhoch."
-    },
-    "Trendfolge & Supertrend (Swing)": {
-        "ema_fast": 20,
-        "ema_slow": 50,
-        "sl_factor": 0.95,
-        "holding_time": "1 bis 4 Wochen (Mittelfristiger Trend)",
-        "desc": "Stetiger Aufwärtstrend über EMA 20 & 50 reiten."
-    },
-    "Qualitäts- & Value-Trend": {
-        "ema_fast": 50,
-        "ema_slow": 200,
-        "sl_factor": 0.93,
-        "holding_time": "1 bis 6 Monate (Positions-Trading)",
-        "desc": "Übergeordneter Großtrend (EMA 50 / EMA 200)."
+# -----------------------------------------------------------------------------
+# 2. FUNKTION: TRADINGVIEW CHART RENDERER
+# -----------------------------------------------------------------------------
+def render_tv_chart_mobile(ticker, interval, ema_fast=9, ema_slow=20):
+    tv_symbol = ticker.strip().upper()
+    
+    # 1. Börsenplätze für Europa anpassen
+    if tv_symbol.endswith(".DE"):
+        tv_symbol = f"XETR:{tv_symbol.replace('.DE', '')}"
+    elif tv_symbol.endswith(".PA"):
+        tv_symbol = f"EURONEXT:{tv_symbol.replace('.PA', '')}"
+    elif tv_symbol.endswith(".AS"):
+        tv_symbol = f"EURONEXT:{tv_symbol.replace('.AS', '')}"
+    elif tv_symbol.endswith(".MC"):
+        tv_symbol = f"BME:{tv_symbol.replace('.MC', '')}"
+    # 2. Indizes abfangen
+    elif tv_symbol in ["DAX", "^GDAXI"]:
+        tv_symbol = "XER:FDAX1!"
+    elif tv_symbol in ["SPX", "S&P500", "^GSPC"]:
+        tv_symbol = "FOREXCOM:SPXUSD"
+    elif tv_symbol in ["DJI", "DOW", "^DJI"]:
+        tv_symbol = "FOREXCOM:DJI"
+    elif tv_symbol in ["NDX", "NASDAQ", "^IXIC"]:
+        tv_symbol = "NASDAQ:NDX"
+    else:
+        # WICHTIG: Wandelt US-Klassensymbole wie BRK-B für TradingView in BRK.B um
+        # Verhindert, dass TradingView "BRK minus B" berechnet
+        tv_symbol = tv_symbol.replace("-", ".")
+
+    # TradingView Intervall-Zuordnung
+    interval_mapping = {
+        "1m": "1",
+        "3m": "3",
+        "5m": "5",
+        "15m": "15",
+        "30m": "30",
+        "1h": "60",
+        "4h": "240",
+        "D": "D",
+        "W": "W"
     }
-}
+    tv_interval = interval_mapping.get(interval, "D")
 
-TIMEFRAMES = {
-    "Swingtrading (Tageschart - D1)": {"period": "6mo", "interval": "1d", "tv_interval": "D"},
-    "Positions-Trading (Wochenchart - W1)": {"period": "2y", "interval": "1wk", "tv_interval": "W"},
-    "Daytrading (1 Std - H1)": {"period": "1mo", "interval": "60m", "tv_interval": "60"},
-    "Daytrading (15 Min - M15)": {"period": "5d", "interval": "15m", "tv_interval": "15"}
-}
-
-# ---------------------------------------------------------
-# 2. SESSION STATE MANAGEMENT
-# ---------------------------------------------------------
-if "selected_ticker" not in st.session_state:
-    st.session_state["selected_ticker"] = "SAP.DE"
-if "entry_price" not in st.session_state:
-    st.session_state["entry_price"] = 180.00
-if "calculated_sl" not in st.session_state:
-    st.session_state["calculated_sl"] = 174.60
-if "target_crv" not in st.session_state:
-    st.session_state["target_crv"] = 2.00
-if "active_strategy" not in st.session_state:
-    st.session_state["active_strategy"] = list(STRATEGIES.keys())[0]
-
-# ---------------------------------------------------------
-# 3. HELPER FUNCTIONS
-# ---------------------------------------------------------
-@st.cache_data(ttl=300)
-def fetch_ticker_data(ticker, period, interval):
-    try:
-        df = yf.download(ticker, period=period, interval=interval, progress=False)
-        if df.empty or len(df) < 20:
-            return None
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-        return df
-    except Exception:
-        return None
-
-def run_scan(watchlist_tickers, strategy_key, timeframe_key):
-    strat = STRATEGIES[strategy_key]
-    tf = TIMEFRAMES[timeframe_key]
-    results = []
-    
-    for ticker in watchlist_tickers:
-        df = fetch_ticker_data(ticker, tf["period"], tf["interval"])
-        if df is None:
-            continue
-            
-        close = float(df["Close"].iloc[-1])
-        ema_fast = float(df["Close"].ewm(span=strat["ema_fast"]).mean().iloc[-1])
-        ema_slow = float(df["Close"].ewm(span=strat["ema_slow"]).mean().iloc[-1])
-        
-        abstand_ema = ((close - ema_fast) / ema_fast) * 100
-        sl_price = min(ema_slow, close * strat["sl_factor"])
-        
-        if close > ema_fast and ema_fast > ema_slow:
-            if abs(abstand_ema) <= 1.5:
-                status = "🔥 PERFECT MPS SETUP"
-            else:
-                status = "📈 Aufwärtstrend"
-        elif close < ema_fast and ema_fast < ema_slow:
-            status = "📉 Abwärtstrend"
-        else:
-            status = "⚪ Neutral"
-            
-        results.append({
-            "Ticker": ticker,
-            "Status": status,
-            "Kurs": round(close, 2),
-            "SL (Strategie)": round(sl_price, 2),
-            f"EMA {strat['ema_fast']}": round(ema_fast, 2),
-            "Abstand %": round(abstand_ema, 2)
-        })
-        
-    return pd.DataFrame(results)
-
-def render_tv_chart_mobile(ticker, tv_interval, ema_fast=20, ema_slow=50):
-    tv_symbol = ticker
-    if ticker.endswith(".DE"):
-        tv_symbol = f"XETR:{ticker.replace('.DE', '')}"
-    elif ticker.endswith(".PA"):
-        tv_symbol = f"EURONEXT:{ticker.replace('.PA', '')}"
-    elif ticker.endswith(".AS"):
-        tv_symbol = f"EURONEXT:{ticker.replace('.AS', '')}"
-    elif ticker.endswith(".MC"):
-        tv_symbol = f"BME:{ticker.replace('.MC', '')}"
-    
-    chart_html = f"""
-    <div class="tradingview-widget-container" style="height:480px;width:100%;">
-      <div id="tradingview_chart" style="height:480px;width:100%;"></div>
+    # TradingView HTML Widget Code
+    html_code = f"""
+    <div class="tradingview-widget-container" style="height:520px; width:100%;">
+      <div id="tradingview_chart_widget" style="height:500px; width:100%;"></div>
       <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
       <script type="text/javascript">
-      new TradingView.widget({{
+      new TradingView.widget(
+      {{
         "autosize": true,
         "symbol": "{tv_symbol}",
         "interval": "{tv_interval}",
@@ -198,150 +93,105 @@ def render_tv_chart_mobile(ticker, tv_interval, ema_fast=20, ema_slow=50):
         "locale": "de_DE",
         "toolbar_bg": "#f1f3f6",
         "enable_publishing": false,
-        "hide_side_toolbar": false,
         "allow_symbol_change": true,
-        "container_id": "tradingview_chart",
+        "container_id": "tradingview_chart_widget",
         "studies": [
           {{
             "id": "STD;EMA",
-            "inputs": {{
-              "length": {ema_fast}
-            }}
+            "inputs": {{ "length": {ema_fast} }}
           }},
           {{
             "id": "STD;EMA",
-            "inputs": {{
-              "length": {ema_slow}
-            }}
+            "inputs": {{ "length": {ema_slow} }}
           }}
         ]
-      }});
+      }}
+      );
       </script>
     </div>
     """
-    components.html(chart_html, height=490)
+    components.html(html_code, height=520)
 
-# ---------------------------------------------------------
-# 4. MAIN APP UI
-# ---------------------------------------------------------
-st.title("📱 MPS Mobile Scanner")
+# -----------------------------------------------------------------------------
+# 3. APP NAVIGATION VIA TABS
+# -----------------------------------------------------------------------------
+tab_scanner, tab_chart_rechner = st.tabs(["🔎 Scanner", "📊 Chart & Rechner"])
 
-tab1, tab2 = st.tabs(["🔎 Scanner", "📊 Chart & Rechner"])
-
+# =============================================================================
 # TAB 1: SCANNER
-with tab1:
-    selected_watchlist = st.selectbox("1. Watchlist wählen:", list(WATCHLISTS.keys()))
+# =============================================================================
+with tab_scanner:
+    st.subheader("Markt Scanner")
     
-    if selected_watchlist == "Eigene Watchlist":
-        custom_input = st.text_input("Ticker eingeben (kommagetrennt):", "SAP.DE, SIE.DE, AAPL, TSLA")
-        tickers_to_scan = [t.strip().upper() for t in custom_input.split(",") if t.strip()]
-    else:
-        tickers_to_scan = WATCHLISTS[selected_watchlist]
+    index_selection = st.selectbox(
+        "Index / Liste wählen:",
+        ["Favoriten", "DAX", "MDAX", "SDAX", "EURO STOXX 50", "S&P 500", "Dow Jones", "Russell 2000"]
+    )
+    
+    # Beispielhafte Listenübersicht
+    st.info(f"Ausgewählte Liste: **{index_selection}**")
+    
+    # Hier kannst du deine bestehende Scann-Logik einbinden
+    # Beispiel-Tabelle zur Veranschaulichung:
+    sample_data = pd.DataFrame({
+        "Ticker": ["BRK-B", "AAPL", "SAP.DE", "MSFT", "NVDA"],
+        "Name": ["Berkshire Hathaway B", "Apple Inc.", "SAP SE", "Microsoft", "Nvidia"],
+        "Trend": ["Bullisch", "Konsolidierung", "Bullisch", "Bearisch", "Bullisch"],
+        "RSI": [58.4, 45.2, 62.1, 38.9, 71.3]
+    })
+    
+    st.dataframe(sample_data, use_container_width=True)
 
-    with st.expander("⚙️ Strategie & Zeiteinheit anpassen", expanded=True):
-        selected_strategy = st.selectbox("Strategie:", list(STRATEGIES.keys()))
-        selected_tf = st.selectbox("Zeiteinheit:", list(TIMEFRAMES.keys()))
-        
-        st.info(f"⏱️ **Ungefähre Haltedauer:** {STRATEGIES[selected_strategy]['holding_time']}\n\nℹ️ {STRATEGIES[selected_strategy]['desc']}")
-        st.session_state["active_strategy"] = selected_strategy
-
-    if st.button("🚀 Scan starten", use_container_width=True):
-        with st.spinner(f"Scanne {len(tickers_to_scan)} Werte..."):
-            scan_df = run_scan(tickers_to_scan, selected_strategy, selected_tf)
-            st.session_state["last_scan_df"] = scan_df
-
-    if "last_scan_df" in st.session_state and not st.session_state["last_scan_df"].empty:
-        df_res = st.session_state["last_scan_df"]
-        st.success(f"Scan fertig! {len(df_res)} Werte analysiert.")
-        
-        event = st.dataframe(
-            df_res,
-            use_container_width=True,
-            selection_mode="single-row",
-            on_select="rerun"
-        )
-        
-        selected_rows = event.selection.rows if hasattr(event, "selection") else []
-        if selected_rows:
-            row_idx = selected_rows[0]
-            sel_ticker = df_res.iloc[row_idx]["Ticker"]
-            sel_price = float(df_res.iloc[row_idx]["Kurs"])
-            sel_sl = float(df_res.iloc[row_idx]["SL (Strategie)"])
-            
-            st.session_state["selected_ticker"] = sel_ticker
-            st.session_state["entry_price"] = sel_price
-            st.session_state["calculated_sl"] = sel_sl
-            
-            st.info(f"✅ **{sel_ticker}** geladen. Wechsel zum Tab 'Chart & Rechner'.")
-
+# =============================================================================
 # TAB 2: CHART & POSITIONSRECHNER
-with tab2:
-    st.subheader(f"Wert: {st.session_state['selected_ticker']}")
+# =============================================================================
+with tab_chart_rechner:
+    st.markdown("### Wert: ")
     
-    # EMA-Werte basierend auf aktiver Strategie abrufen
-    curr_strat_key = st.session_state.get("active_strategy", list(STRATEGIES.keys())[0])
-    ema_fast = STRATEGIES[curr_strat_key]["ema_fast"]
-    ema_slow = STRATEGIES[curr_strat_key]["ema_slow"]
+    # Ticker-Eingabe & Einstellungen
+    col_sym, col_tf = st.columns([2, 1])
+    with col_sym:
+        ticker_input = st.text_input("Ticker-Symbol:", value="BRK-B").strip()
+    with col_tf:
+        timeframe = st.selectbox("Zeitfenster:", ["1m", "3m", "5m", "15m", "30m", "1h", "4h", "D", "W"], index=7)
     
-    tv_tf = TIMEFRAMES[selected_tf]["tv_interval"] if 'selected_tf' in locals() else "D"
-    
-    # Chart rendern inklusive Werkzeugen und EMA-Indikatoren
-    render_tv_chart_mobile(st.session_state["selected_ticker"], tv_tf, ema_fast, ema_slow)
+    # Live Chart rendern
+    if ticker_input:
+        render_tv_chart_mobile(ticker_input, timeframe)
     
     st.markdown("---")
+    
+    # -------------------------------------------------------------------------
+    # POSITIONSRECHNER
+    # -------------------------------------------------------------------------
     st.subheader("🧮 Positionsrechner")
     
-    calc_mode = st.radio("Berechnungsmethode:", ["Risikobasiert (% Depot)", "Feste Investition (€)"])
-    
-    if calc_mode == "Risikobasiert (% Depot)":
-        depot_size = st.number_input("Gesamtkapital (€):", value=1500.0, step=100.0)
-        risk_pct = st.number_input("Risiko pro Trade (%):", value=2.0, step=0.25)
-        max_risk_eur = depot_size * (risk_pct / 100.0)
-    else:
-        invest_amount = st.number_input("Anlagebetrag (€):", value=1000.0, step=100.0)
-        max_risk_eur = None
-
-    target_crv = st.number_input(
-        "🎯 Wunsch-CRV (Anpassbar):", 
-        value=float(st.session_state["target_crv"]), 
-        step=0.25, 
-        min_value=1.0, 
-        max_value=10.0
-    )
-    st.session_state["target_crv"] = target_crv
-
-    entry = st.session_state["entry_price"]
-    sl = st.session_state["calculated_sl"]
-    risk_per_share = entry - sl
-    tp = entry + (risk_per_share * target_crv)
-    
-    curr_holding = STRATEGIES[curr_strat_key]["holding_time"]
-    
-    st.markdown("#### 🔒 Ausgewählte Strategie-Parameter")
-    st.text_input("⏱️ Geplante Haltedauer:", value=curr_holding, disabled=True)
-    st.number_input("Einstieg / Limit Order (€/$):", value=float(entry), disabled=True)
-    st.number_input("Stop Loss (€/$) [Strategie-Fix]:", value=float(sl), disabled=True)
-    st.number_input("Take Profit (€/$) [Aus CRV berechnet]:", value=float(round(tp, 2)), disabled=True)
-
-    if risk_per_share > 0:
-        if calc_mode == "Risikobasiert (% Depot)":
-            shares = int(max_risk_eur / risk_per_share)
-            total_volume = shares * entry
-        else:
-            shares = int(invest_amount / entry)
-            total_volume = shares * entry
-            max_risk_eur = shares * risk_per_share
-            
-        total_profit = shares * (tp - entry)
+    col_acc, col_risk = st.columns(2)
+    with col_acc:
+        account_size = st.number_input("Kontogröße (€):", value=10000.0, step=500.0)
+    with col_risk:
+        risk_percent = st.number_input("Risiko pro Trade (%):", value=1.0, step=0.25)
         
-        st.markdown("---")
-        col_m1, col_m2 = st.columns(2)
-        with col_m1:
-            st.metric("📦 Stückzahl", f"{shares} Stk.")
-            st.metric("🔴 Max. Verlust", f"{max_risk_eur:,.2f} €")
-            st.metric("💰 Gesamtvolumen", f"{total_volume:,.2f} €")
-        with col_m2:
-            st.metric("⚖️ Effektives CRV", f"1 : {target_crv:.2f}")
-            st.metric("🟢 Max. Gewinn", f"{total_profit:,.2f} €")
+    col_entry, col_sl = st.columns(2)
+    with col_entry:
+        entry_price = st.number_input("Einstiegskurs ($/€):", value=450.0, step=1.0)
+    with col_sl:
+        stop_loss = st.number_input("Stop Loss ($/€):", value=440.0, step=1.0)
+        
+    # Berechnungen
+    max_risk_eur = account_size * (risk_percent / 100.0)
+    risk_per_share = abs(entry_price - stop_loss)
+    
+    if risk_per_share > 0:
+        shares = int(max_risk_eur / risk_per_share)
+        position_value = shares * entry_price
+        
+        st.success(f"""
+        **Berechnete Positionsgröße:**
+        * **Max. Risiko (€):** {max_risk_eur:.2f} €
+        * **Stückzahl:** {shares} Aktien
+        * **Positionswert:** {position_value:.2f} $/€
+        * **Risiko pro Aktie:** {risk_per_share:.2f} $/€
+        """)
     else:
-        st.error("Ungültiges Setup: Stop Loss liegt nicht unter dem Einstiegskurs.")
+        st.warning("Einstiegskurs und Stop Loss dürfen nicht identisch sein.")
