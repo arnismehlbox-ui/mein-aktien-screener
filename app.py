@@ -4,7 +4,7 @@ import yfinance as yf
 import streamlit.components.v1 as components
 
 # ---------------------------------------------------------
-# PAGE CONFIGURATION (FOR MOBILE)
+# PAGE CONFIGURATION (MOBILE OPTIMIZED)
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="MPS Mobile Scanner",
@@ -13,17 +13,17 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# CSS-Anpassung für mobile Touch-Bedienung
 st.markdown("""
     <style>
     .block-container { padding-top: 1rem; padding-bottom: 2rem; padding-left: 0.5rem; padding-right: 0.5rem; }
     div[data-baseweb="select"] { font-size: 16px; }
     button { min-height: 48px; font-size: 16px !important; }
+    input:disabled { color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; opacity: 0.85; }
     </style>
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 1. WATCHLISTS & INDIZES DEFINITION
+# 1. WATCHLISTS & STRATEGIEN DEFINITION
 # ---------------------------------------------------------
 WATCHLISTS = {
     "DAX 40 (DE)": [
@@ -59,21 +59,25 @@ STRATEGIES = {
     "MPS (Market Pullback Setup - EMA20)": {
         "ema_fast": 20,
         "ema_slow": 50,
-        "desc": "Rücksetzer nahe EMA 20 im Aufwärtstrend."
+        "sl_factor": 0.97,  # SL knapp unter EMA 50 / ca. 3% Puffer
+        "desc": "Rücksetzer nahe EMA 20. SL wird automatisch unter dem Support gesetzt."
     },
     "Trendfolge & Supertrend (Swing)": {
         "ema_fast": 20,
         "ema_slow": 50,
+        "sl_factor": 0.95,  # SL ca. 5% unter Einstieg / EMA 50
         "desc": "Stetiger Aufwärtstrend über EMA 20 & 50."
     },
     "Breakout / Allzeithoch (Momentum)": {
         "ema_fast": 10,
         "ema_slow": 30,
+        "sl_factor": 0.96,  # Enge Absicherung ca. 4%
         "desc": "Momentum-Werte nahe am Periodenhoch."
     },
     "Qualitäts- & Value-Trend": {
         "ema_fast": 50,
         "ema_slow": 200,
+        "sl_factor": 0.93,  # Weiterer SL ca. 7%
         "desc": "Übergeordneter Trend (EMA 50 / EMA 200)."
     }
 }
@@ -86,16 +90,16 @@ TIMEFRAMES = {
 }
 
 # ---------------------------------------------------------
-# 2. SESSION STATE
+# 2. SESSION STATE MANAGEMENT
 # ---------------------------------------------------------
 if "selected_ticker" not in st.session_state:
     st.session_state["selected_ticker"] = "SAP.DE"
 if "entry_price" not in st.session_state:
     st.session_state["entry_price"] = 180.00
-if "stop_loss" not in st.session_state:
-    st.session_state["stop_loss"] = 175.00
-if "take_profit" not in st.session_state:
-    st.session_state["take_profit"] = 195.00
+if "calculated_sl" not in st.session_state:
+    st.session_state["calculated_sl"] = 174.60
+if "target_crv" not in st.session_state:
+    st.session_state["target_crv"] = 2.00
 
 # ---------------------------------------------------------
 # 3. HELPER FUNCTIONS
@@ -128,6 +132,9 @@ def run_scan(watchlist_tickers, strategy_key, timeframe_key):
         
         abstand_ema = ((close - ema_fast) / ema_fast) * 100
         
+        # Strategiebasierte SL-Berechnung
+        sl_price = min(ema_slow, close * strat["sl_factor"])
+        
         if close > ema_fast and ema_fast > ema_slow:
             if abs(abstand_ema) <= 1.5:
                 status = "🔥 PERFECT MPS SETUP"
@@ -142,6 +149,7 @@ def run_scan(watchlist_tickers, strategy_key, timeframe_key):
             "Ticker": ticker,
             "Status": status,
             "Kurs": round(close, 2),
+            "SL (Strategie)": round(sl_price, 2),
             f"EMA {strat['ema_fast']}": round(ema_fast, 2),
             "Abstand %": round(abstand_ema, 2)
         })
@@ -160,8 +168,8 @@ def render_tv_chart_mobile(ticker, tv_interval):
         tv_symbol = f"BME:{ticker.replace('.MC', '')}"
     
     chart_html = f"""
-    <div class="tradingview-widget-container" style="height:420px;width:100%;">
-      <div id="tradingview_chart" style="height:420px;width:100%;"></div>
+    <div class="tradingview-widget-container" style="height:400px;width:100%;">
+      <div id="tradingview_chart" style="height:400px;width:100%;"></div>
       <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
       <script type="text/javascript">
       new TradingView.widget({{
@@ -181,10 +189,10 @@ def render_tv_chart_mobile(ticker, tv_interval):
       </script>
     </div>
     """
-    components.html(chart_html, height=430)
+    components.html(chart_html, height=410)
 
 # ---------------------------------------------------------
-# 4. MAIN APP UI (MOBILE OPTIMIZED)
+# 4. MAIN APP UI
 # ---------------------------------------------------------
 st.title("📱 MPS Mobile Scanner")
 
@@ -203,6 +211,7 @@ with tab1:
     with st.expander("⚙️ Strategie & Zeiteinheit anpassen", expanded=False):
         selected_strategy = st.selectbox("Strategie:", list(STRATEGIES.keys()))
         selected_tf = st.selectbox("Zeiteinheit:", list(TIMEFRAMES.keys()))
+        
     if 'selected_strategy' not in locals():
         selected_strategy = list(STRATEGIES.keys())[0]
     if 'selected_tf' not in locals():
@@ -228,12 +237,12 @@ with tab1:
         if selected_rows:
             row_idx = selected_rows[0]
             sel_ticker = df_res.iloc[row_idx]["Ticker"]
-            sel_price = df_res.iloc[row_idx]["Kurs"]
+            sel_price = float(df_res.iloc[row_idx]["Kurs"])
+            sel_sl = float(df_res.iloc[row_idx]["SL (Strategie)"])
             
             st.session_state["selected_ticker"] = sel_ticker
-            st.session_state["entry_price"] = float(sel_price)
-            st.session_state["stop_loss"] = float(round(sel_price * 0.96, 2))
-            st.session_state["take_profit"] = float(round(sel_price * 1.08, 2))
+            st.session_state["entry_price"] = sel_price
+            st.session_state["calculated_sl"] = sel_sl
             
             st.info(f"✅ **{sel_ticker}** geladen. Wechsel zum Tab 'Chart & Rechner'.")
 
@@ -245,25 +254,41 @@ with tab2:
     render_tv_chart_mobile(st.session_state["selected_ticker"], tv_tf)
     
     st.markdown("---")
-    st.subheader("🧮 Positionsrechner")
+    st.subheader("🧮 Positionsrechner (Fixes Setup)")
     
-    calc_mode = st.radio("Berechnung:", ["Risikobasiert (% Depot)", "Feste Investition (€)"])
+    calc_mode = st.radio("Berechnungsmethode:", ["Risikobasiert (% Depot)", "Feste Investition (€)"])
     
     if calc_mode == "Risikobasiert (% Depot)":
-        depot_size = st.number_input("Gesamtkapital (€):", value=10000.0, step=500.0)
-        risk_pct = st.number_input("Risiko pro Trade (%):", value=1.0, step=0.25)
+        depot_size = st.number_input("Gesamtkapital (€):", value=1500.0, step=100.0)
+        risk_pct = st.number_input("Risiko pro Trade (%):", value=2.0, step=0.25)
         max_risk_eur = depot_size * (risk_pct / 100.0)
     else:
-        invest_amount = st.number_input("Anlagebetrag (€):", value=2000.0, step=250.0)
+        invest_amount = st.number_input("Anlagebetrag (€):", value=1000.0, step=100.0)
         max_risk_eur = None
-        
-    entry = st.number_input("Einstieg (€/$):", value=float(st.session_state["entry_price"]), step=0.10)
-    sl = st.number_input("Stop Loss (€/$):", value=float(st.session_state["stop_loss"]), step=0.10)
-    tp = st.number_input("Take Profit (€/$):", value=float(st.session_state["take_profit"]), step=0.10)
-    
+
+    # CRV Steuerung
+    target_crv = st.number_input(
+        "🎯 Wunsch-CRV (Anpassbar):", 
+        value=float(st.session_state["target_crv"]), 
+        step=0.25, 
+        min_value=1.0, 
+        max_value=10.0
+    )
+    st.session_state["target_crv"] = target_crv
+
+    # Feste, schreibgeschützte Werte (Strategiebasiert)
+    entry = st.session_state["entry_price"]
+    sl = st.session_state["calculated_sl"]
     risk_per_share = entry - sl
-    reward_per_share = tp - entry
     
+    # Automatische TP Berechnung basierend auf CRV
+    tp = entry + (risk_per_share * target_crv)
+    
+    st.markdown("#### 🔒 Ausgewählte Strategie-Parameter")
+    st.number_input("Einstieg / Limit Order (€/$):", value=float(entry), disabled=True)
+    st.number_input("Stop Loss (€/$) [Strategie-Fix]:", value=float(sl), disabled=True)
+    st.number_input("Take Profit (€/$) [Aus CRV berechnet]:", value=float(round(tp, 2)), disabled=True)
+
     if risk_per_share > 0:
         if calc_mode == "Risikobasiert (% Depot)":
             shares = int(max_risk_eur / risk_per_share)
@@ -273,15 +298,15 @@ with tab2:
             total_volume = shares * entry
             max_risk_eur = shares * risk_per_share
             
-        total_profit = shares * reward_per_share
-        crv = reward_per_share / risk_per_share if risk_per_share > 0 else 0
+        total_profit = shares * (tp - entry)
         
+        st.markdown("---")
         col_m1, col_m2 = st.columns(2)
         with col_m1:
             st.metric("📦 Stückzahl", f"{shares} Stk.")
             st.metric("🛡️ Risiko", f"{max_risk_eur:,.2f} €")
         with col_m2:
             st.metric("💰 Volumen", f"{total_volume:,.2f} €")
-            st.metric("⚖️ CRV", f"1 : {crv:.2f}")
+            st.metric("⚖️ Effektives CRV", f"1 : {target_crv:.2f}")
     else:
-        st.error("Stop Loss muss UNTER dem Einstiegskurs liegen!")
+        st.error("Ungültiges Setup: Stop Loss liegt nicht unter dem Einstiegskurs.")
