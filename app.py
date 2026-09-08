@@ -38,6 +38,9 @@ st.markdown("""
 # 1. WATCHLISTS & STRATEGIEN DEFINITION (INKL. HALTEDAUER)
 # ---------------------------------------------------------
 WATCHLISTS = {
+    "Elite 7 (EMR-Strategie)": [
+        "MSFT", "AVGO", "SAP.DE", "V", "ALV.DE", "PG", "O"
+    ],
     "DAX 40 (DE)": [
         "SAP.DE", "SIE.DE", "ALV.DE", "DTE.DE", "AIR.DE", "MBG.DE", "BMW.DE", 
         "BAS.DE", "BAYN.DE", "ADS.DE", "RWE.DE", "DB1.DE", "IFX.DE", "MUV2.DE",
@@ -235,6 +238,7 @@ tab1, tab2 = st.tabs(["🔎 Scanner", "📊 Chart & Rechner"])
 # TAB 1: SCANNER
 with tab1:
     selected_watchlist = st.selectbox("1. Watchlist wählen:", list(WATCHLISTS.keys()))
+    st.session_state["selected_watchlist"] = selected_watchlist
     
     if selected_watchlist == "Eigene Watchlist":
         custom_input = st.text_input("Ticker eingeben (kommagetrennt):", "SAP.DE, SIE.DE, AAPL, TSLA")
@@ -248,6 +252,7 @@ with tab1:
         
         st.info(f"⏱️ **Ungefähre Haltedauer:** {STRATEGIES[selected_strategy]['holding_time']}\n\nℹ️ {STRATEGIES[selected_strategy]['desc']}")
         st.session_state["active_strategy"] = selected_strategy
+        st.session_state["active_tf"] = selected_tf
 
     if st.button("🚀 Scan starten", use_container_width=True):
         with st.spinner(f"Scanne {len(tickers_to_scan)} Werte..."):
@@ -284,13 +289,20 @@ with tab2:
     
     # EMA-Werte basierend auf aktiver Strategie abrufen
     curr_strat_key = st.session_state.get("active_strategy", list(STRATEGIES.keys())[0])
-    ema_fast = STRATEGIES[curr_strat_key]["ema_fast"]
-    ema_slow = STRATEGIES[curr_strat_key]["ema_slow"]
     
-    tv_tf = TIMEFRAMES[selected_tf]["tv_interval"] if 'selected_tf' in locals() else "D"
+    # NEU: Überprüfen, ob Elite 7 ausgewählt ist. Wenn ja, zwinge den Chart auf EMA 50 & 200.
+    if st.session_state.get("selected_watchlist", "") == "Elite 7 (EMR-Strategie)":
+        ema_fast_chart = 50
+        ema_slow_chart = 200
+    else:
+        ema_fast_chart = STRATEGIES[curr_strat_key]["ema_fast"]
+        ema_slow_chart = STRATEGIES[curr_strat_key]["ema_slow"]
+    
+    active_tf = st.session_state.get("active_tf", list(TIMEFRAMES.keys())[0])
+    tv_tf = TIMEFRAMES[active_tf]["tv_interval"]
     
     # Chart rendern inklusive Werkzeugen, EMA-Indikatoren und BRK.B-Anpassung
-    render_tv_chart_mobile(st.session_state["selected_ticker"], tv_tf, ema_fast, ema_slow)
+    render_tv_chart_mobile(st.session_state["selected_ticker"], tv_tf, ema_fast_chart, ema_slow_chart)
     
     st.markdown("---")
     st.subheader("🧮 Positionsrechner")
