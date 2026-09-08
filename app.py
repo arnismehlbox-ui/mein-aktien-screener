@@ -101,9 +101,10 @@ STRATEGIES = {
     }
 }
 
+# WICHTIG: Perioden für Tages- und Wochenchart erhöht, damit EMA 200 berechnet werden kann!
 TIMEFRAMES = {
-    "Swingtrading (Tageschart - D1)": {"period": "6mo", "interval": "1d", "tv_interval": "D"},
-    "Positions-Trading (Wochenchart - W1)": {"period": "2y", "interval": "1wk", "tv_interval": "W"},
+    "Swingtrading (Tageschart - D1)": {"period": "2y", "interval": "1d", "tv_interval": "D"},
+    "Positions-Trading (Wochenchart - W1)": {"period": "5y", "interval": "1wk", "tv_interval": "W"},
     "Daytrading (1 Std - H1)": {"period": "1mo", "interval": "60m", "tv_interval": "60"},
     "Daytrading (15 Min - M15)": {"period": "5d", "interval": "15m", "tv_interval": "15"}
 }
@@ -137,8 +138,17 @@ def fetch_ticker_data(ticker, period, interval):
     except Exception:
         return None
 
-def run_scan(watchlist_tickers, strategy_key, timeframe_key):
-    strat = STRATEGIES[strategy_key]
+def run_scan(watchlist_name, watchlist_tickers, strategy_key, timeframe_key):
+    # Parameter kopieren, damit wir sie für Elite 7 überschreiben können
+    strat = STRATEGIES[strategy_key].copy()
+    is_elite = (watchlist_name == "Elite 7 (EMR-Strategie)")
+    
+    # AUTOPILOT FÜR ELITE 7: Zwingt den Scanner auf EMA 50 & 200
+    if is_elite:
+        strat["ema_fast"] = 50
+        strat["ema_slow"] = 200
+        strat["sl_factor"] = 0.93 # Breiterer Puffer
+        
     tf = TIMEFRAMES[timeframe_key]
     results = []
     
@@ -148,29 +158,45 @@ def run_scan(watchlist_tickers, strategy_key, timeframe_key):
             continue
             
         close = float(df["Close"].iloc[-1])
-        ema_fast = float(df["Close"].ewm(span=strat["ema_fast"]).mean().iloc[-1])
-        ema_slow = float(df["Close"].ewm(span=strat["ema_slow"]).mean().iloc[-1])
+        # adjust=False liefert akkuratere Ergebnisse, die TradingView ähneln
+        ema_fast = float(df["Close"].ewm(span=strat["ema_fast"], adjust=False).mean().iloc[-1])
+        ema_slow = float(df["Close"].ewm(span=strat["ema_slow"], adjust=False).mean().iloc[-1])
         
-        abstand_ema = ((close - ema_fast) / ema_fast) * 100
+        # 1. Spezifische Logik für Elite 7 (Fokus auf EMA 200)
+        if is_elite:
+            abstand_ema = ((close - ema_slow) / ema_slow) * 100
+            reference_col = f"Abstand (EMA {strat['ema_slow']})"
+            
+            if close > ema_slow:
+                status = "🟢 Intakt (Halten / Sparplan)"
+            else:
+                status = "🔴 Unter EMA 200 (Cash parken)"
+                
+        # 2. Normale Swing-Trading Logik (Fokus auf MPS & Momentum)
+        else:
+            abstand_ema = ((close - ema_fast) / ema_fast) * 100
+            reference_col = f"Abstand (EMA {strat['ema_fast']})"
+            
+            if close > ema_fast and ema_fast > ema_slow:
+                if abs(abstand_ema) <= 1.5:
+                    status = "🔥 PERFECT MPS SETUP"
+                else:
+                    status = "📈 Aufwärtstrend"
+            elif close < ema_fast and ema_fast < ema_slow:
+                status = "📉 Abwärtstrend"
+            else:
+                status = "⚪ Neutral"
+                
         sl_price = min(ema_slow, close * strat["sl_factor"])
         
-        if close > ema_fast and ema_fast > ema_slow:
-            if abs(abstand_ema) <= 1.5:
-                status = "🔥 PERFECT MPS SETUP"
-            else:
-                status = "📈 Aufwärtstrend"
-        elif close < ema_fast and ema_fast < ema_slow:
-            status = "📉 Abwärtstrend"
-        else:
-            status = "⚪ Neutral"
-            
         results.append({
             "Ticker": ticker,
             "Status": status,
             "Kurs": round(close, 2),
             "SL (Strategie)": round(sl_price, 2),
             f"EMA {strat['ema_fast']}": round(ema_fast, 2),
-            "Abstand %": round(abstand_ema, 2)
+            f"EMA {strat['ema_slow']}": round(ema_slow, 2),
+            reference_col: f"{round(abstand_ema, 2)} %"
         })
         
     return pd.DataFrame(results)
@@ -187,7 +213,6 @@ def render_tv_chart_mobile(ticker, tv_interval, ema_fast=20, ema_slow=50):
     elif tv_symbol.endswith(".MC"):
         tv_symbol = f"BME:{tv_symbol.replace('.MC', '')}"
     else:
-        # Ersetzt Bindestrich bei US-Klassensymbolen (z. B. BRK-B -> BRK.B) für TradingView
         tv_symbol = tv_symbol.replace("-", ".")
     
     chart_html = f"""
@@ -255,8 +280,9 @@ with tab1:
         st.session_state["active_tf"] = selected_tf
 
     if st.button("🚀 Scan starten", use_container_width=True):
-        with st.spinner(f"Scanne {len(tickers_to_scan)} Werte..."):
-            scan_df = run_scan(tickers_to_scan, selected_strategy, selected_tf)
+        with st.spinner(f"Scanne {len(tickers_to_scan)} Werte... (Das dauert bei D1 kurz wg. 2-Jahres-Historie)"):
+            # HIER WICHTIG: selected_watchlist wird jetzt an run_scan übergeben!
+            scan_df = run_scan(selected_watchlist, tickers_to_scan, selected_strategy, selected_tf)
             st.session_state["last_scan_df"] = scan_df
 
     if "last_scan_df" in st.session_state and not st.session_state["last_scan_df"].empty:
@@ -290,7 +316,7 @@ with tab2:
     # EMA-Werte basierend auf aktiver Strategie abrufen
     curr_strat_key = st.session_state.get("active_strategy", list(STRATEGIES.keys())[0])
     
-    # NEU: Überprüfen, ob Elite 7 ausgewählt ist. Wenn ja, zwinge den Chart auf EMA 50 & 200.
+    # AUTOPILOT FÜR CHART: Wenn Elite 7 ausgewählt ist, zwinge Chart auf EMA 50 & 200
     if st.session_state.get("selected_watchlist", "") == "Elite 7 (EMR-Strategie)":
         ema_fast_chart = 50
         ema_slow_chart = 200
