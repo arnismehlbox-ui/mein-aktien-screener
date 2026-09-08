@@ -7,15 +7,24 @@ import yfinance as yf
 # ---------------------------------------------------------
 st.set_page_config(page_title="Renten-Masterplan", page_icon="💰", layout="wide")
 
+# CSS: Helle Schrift in den dunklen Boxen erzwingen
 st.markdown("""
     <style>
     .block-container { padding-top: 1rem; padding-bottom: 2rem; }
-    .metric-box { background-color: #1e222d; padding: 15px; border-radius: 8px; border-left: 5px solid #2962ff; margin-bottom: 15px; }
+    .metric-box { background-color: #1e222d; color: #ffffff !important; padding: 15px; border-radius: 8px; border-left: 5px solid #3b82f6; margin-bottom: 15px; }
     .metric-box-green { border-left-color: #26a69a; }
+    .metric-box b { color: #e2e8f0; font-size: 14px; }
     </style>
 """, unsafe_allow_html=True)
 
 st.title("👑 Der Masterplan: Freiheit ab 68")
+
+# ---------------------------------------------------------
+# HELPER: DEUTSCHE ZAHLENFORMATIERUNG
+# ---------------------------------------------------------
+def format_ger(val):
+    # Macht aus 170000 -> 170.000 (Tausenderpunkt statt Komma)
+    return f"{val:,.0f}".replace(",", ".")
 
 # ---------------------------------------------------------
 # HELPER: BERECHNUNGS-LOGIK (Monat für Monat)
@@ -57,7 +66,7 @@ def calc_pension(final_capital):
 def get_elite_dividends():
     tickers = ["MSFT", "AVGO", "SAP.DE", "V", "ALV.DE", "PG", "O"]
     # Fallbacks falls Yahoo Finance API klemmt
-    fallbacks = {"MSFT": 0.73, "AVGO": 1.20, "SAP.DE": 1.35, "V": 0.72, "ALV.DE": 4.50, "PG": 2.40, "O": 5.30}
+    fallbacks = {"MSFT": 0.0073, "AVGO": 0.0120, "SAP.DE": 0.0135, "V": 0.0072, "ALV.DE": 0.0450, "PG": 0.0240, "O": 0.0530}
     
     data = []
     for t in tickers:
@@ -65,13 +74,16 @@ def get_elite_dividends():
             info = yf.Ticker(t).info
             div = info.get('dividendYield')
             if div is not None:
-                div_pct = div
+                # Yahoo liefert nun echte Dezimalwerte, daher nicht mehr * 100 multiplizieren, falls schon Prozent
+                div_pct = div * 100 if div < 1 else div
             else:
-                div_pct = fallbacks[t]
+                div_pct = fallbacks[t] * 100
         except:
-            div_pct = fallbacks[t]
+            div_pct = fallbacks[t] * 100
             
-        data.append({"Aktie": t, "Live Dividendenrendite": f"{div_pct:.2f} %"})
+        # Deutsches Komma für Prozente (z.B. 5,30 %)
+        div_str = f"{div_pct:.2f}".replace(".", ",")
+        data.append({"Aktie": t, "Live Dividendenrendite": f"{div_str} %"})
         
     return pd.DataFrame(data)
 
@@ -113,9 +125,9 @@ with tab1:
     pension_net, part_div, part_cc = calc_pension(total_final)
     
     c1, c2, c3 = st.columns(3)
-    c1.markdown(f"<div class='metric-box'><b>📈 Endkapital Elite 7:</b><br><h2 style='margin:0;color:#2962ff;'>{final_elite:,.0f} €</h2></div>", unsafe_allow_html=True)
-    c2.markdown(f"<div class='metric-box'><b>⚔️ Endkapital MPS:</b><br><h2 style='margin:0;color:#2962ff;'>{final_mps:,.0f} €</h2></div>", unsafe_allow_html=True)
-    c3.markdown(f"<div class='metric-box metric-box-green'><b>💰 Rente (Netto/Monat):</b><br><h2 style='margin:0;color:#26a69a;'>{pension_net:,.0f} €</h2></div>", unsafe_allow_html=True)
+    c1.markdown(f"<div class='metric-box'><b>📈 Endkapital Elite 7:</b><br><h2 style='margin:0;color:#4dabf7;'>{format_ger(final_elite)} €</h2></div>", unsafe_allow_html=True)
+    c2.markdown(f"<div class='metric-box'><b>⚔️ Endkapital MPS:</b><br><h2 style='margin:0;color:#4dabf7;'>{format_ger(final_mps)} €</h2></div>", unsafe_allow_html=True)
+    c3.markdown(f"<div class='metric-box metric-box-green'><b>💰 Rente (Netto/Monat):</b><br><h2 style='margin:0;color:#26a69a;'>{format_ger(pension_net)} €</h2></div>", unsafe_allow_html=True)
     
     st.line_chart(df_elite.set_index("Jahr")["Depotwert"], height=300)
 
@@ -142,9 +154,8 @@ with tab2:
     
     st.markdown("---")
     st.markdown(f"### 🎯 Neue Prognose basierend auf deinem Ist-Zustand")
-    st.markdown(f"Erwartetes Gesamtkapital: **{total_ist:,.0f} €**")
-    st.markdown(f"<h3 style='color:#26a69a;'>💸 Erwarteter Rentenzuschuss: {pension_net_ist:,.0f} € Netto / Monat</h3>", unsafe_allow_html=True)
-
+    st.markdown(f"Erwartetes Gesamtkapital: **{format_ger(total_ist)} €**")
+    st.markdown(f"<h3 style='color:#26a69a;'>💸 Erwarteter Rentenzuschuss: {format_ger(pension_net_ist)} € Netto / Monat</h3>", unsafe_allow_html=True)
 
 # ==========================================
 # TAB 3: SPIELWIESE (KALKULATOR)
@@ -182,9 +193,9 @@ with tab3:
     st.markdown("### 📊 Simulations-Ergebnis")
     
     fc1, fc2, fc3 = st.columns(3)
-    fc1.metric("Gesamtkapital Elite 7", f"{final_elite_free:,.0f} €")
-    fc2.metric("Gesamtkapital MPS", f"{final_mps_free:,.0f} €")
-    fc3.markdown(f"<h3 style='color:#26a69a; margin-top:0;'>Passive Rente: {pension_net_free:,.0f} € / Monat</h3>", unsafe_allow_html=True)
+    fc1.metric("Gesamtkapital Elite 7", f"{format_ger(final_elite_free)} €")
+    fc2.metric("Gesamtkapital MPS", f"{format_ger(final_mps_free)} €")
+    fc3.markdown(f"<h3 style='color:#26a69a; margin-top:0;'>Passive Rente: {format_ger(pension_net_free)} € / Monat</h3>", unsafe_allow_html=True)
     
     st.markdown("**(Hybrid-Entnahme: 70% in 5% Netto-Dividenden, 30% in 8% Netto-Stillhalter ETF)**")
     
