@@ -35,6 +35,37 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
+# WKN-DATENBANK FÜR ZERO / SMARTBROKER+
+# ---------------------------------------------------------
+WKN_DB = {
+    # Elite 7 & US-Titel
+    "MSFT": "870747", "AVGO": "A2JG9Z", "V": "A0NC7B", "PG": "852062", "O": "899744",
+    "AAPL": "865985", "GOOGL": "A14Y6F", "GOOG": "A14Y6H", "AMZN": "906866", "META": "A1JWVX",
+    "NVDA": "918422", "TSLA": "A1CX3T", "XOM": "852549", "CVX": "852552", "JNJ": "853243",
+    "JPM": "850628", "UNH": "869561", "HD": "866953", "CAT": "850598", "BA": "850471",
+    "GS": "920332", "MCD": "856958", "KO": "850663", "DIS": "855686", "IBM": "851399",
+    "CSCO": "878841", "VZ": "868402", "WMT": "860853", "CRM": "A0B87V", "INTC": "855681",
+    "AMD": "863186", "COST": "888351", "NFLX": "552484", "TMUS": "A1T7LU", "LLY": "858560", 
+    "BRK-B": "A0YJQ2", "IWM": "599013", "VTWO": "A1CS69", "SMCI": "A0LC13", "AAL": "A1W97M", 
+    "MSTR": "A0DLH4", "CELH": "A0YH6K", "CROX": "A0HLVU", "RBLX": "A2QH3D",
+    # DAX 40 (DE)
+    "SAP.DE": "716460", "SIE.DE": "723610", "ALV.DE": "840400", "DTE.DE": "555750", 
+    "AIR.DE": "938914", "MBG.DE": "710000", "BMW.DE": "519000", "BAS.DE": "BASF11", 
+    "BAYN.DE": "BAY001", "ADS.DE": "A1EWWW", "RWE.DE": "703712", "DB1.DE": "581005", 
+    "IFX.DE": "623100", "MUV2.DE": "843002", "DTG.DE": "DTR0CK", "HEN3.DE": "604843", 
+    "EONG.DE": "ENAG99", "MRK.DE": "659990", "VOW3.DE": "766403", "CON.DE": "543900",
+    # MDAX (DE)
+    "LHA.DE": "823212", "EVK.DE": "EVNK01", "HFG.DE": "A16140", "PUG.DE": "PAH003", 
+    "G1A.DE": "630500", "TKA.DE": "750000", "DEQ.DE": "580100", "FPE3.DE": "A0Z2XN", "KGX.DE": "620200",
+    # SDAX (DE)
+    "S92.DE": "722800", "HDD.DE": "604700", "12D1.DE": "A12DM8", "HAG.DE": "HAG000", 
+    "PFP.DE": "691660", "SOW.DE": "A16140", "SNG.DE": "723530",
+    # Euro Stoxx 50 (EU)
+    "ASML.AS": "A1J4U4", "MC.PA": "853292", "OR.PA": "853888", "TTE.PA": "850727", 
+    "SAN.MC": "870737", "SU.PA": "860180", "IBE.MC": "A0M46B", "CDI.PA": "883388"
+}
+
+# ---------------------------------------------------------
 # 1. WATCHLISTS & STRATEGIEN DEFINITION (INKL. HALTEDAUER)
 # ---------------------------------------------------------
 WATCHLISTS = {
@@ -56,7 +87,7 @@ WATCHLISTS = {
         "ASML.AS", "MC.PA", "SAP.DE", "OR.PA", "TTE.PA", "SAN.MC", "SU.PA", "IBE.MC", "CDI.PA"
     ],
     "Dow Jones Industrial (US)": [
-        "AAPL", "MSFT", "UNH", "GS", "HD", "CAT", "AMZN", "V", "BA", "JNJ", "PG", "JPM", "CVX", "MCD", "WMT"
+        "AAPL", "MSFT", "UNH", "GS", "HD", "CAT", "AMZN", "V", "BA", "JNJ", "PG", "JPM", "CVX", "XOM", "MCD", "WMT"
     ],
     "S&P 500 (US)": [
         "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "BRK-B", "LLY", "TSLA", "AVGO", "JPM", "UNH", "XOM"
@@ -101,7 +132,6 @@ STRATEGIES = {
     }
 }
 
-# WICHTIG: Perioden für Tages- und Wochenchart erhöht, damit EMA 200 berechnet werden kann!
 TIMEFRAMES = {
     "Swingtrading (Tageschart - D1)": {"period": "2y", "interval": "1d", "tv_interval": "D"},
     "Positions-Trading (Wochenchart - W1)": {"period": "5y", "interval": "1wk", "tv_interval": "W"},
@@ -114,6 +144,8 @@ TIMEFRAMES = {
 # ---------------------------------------------------------
 if "selected_ticker" not in st.session_state:
     st.session_state["selected_ticker"] = "SAP.DE"
+if "selected_wkn" not in st.session_state:
+    st.session_state["selected_wkn"] = "716460"
 if "entry_price" not in st.session_state:
     st.session_state["entry_price"] = 180.00
 if "calculated_sl" not in st.session_state:
@@ -126,6 +158,17 @@ if "active_strategy" not in st.session_state:
 # ---------------------------------------------------------
 # 3. HELPER FUNCTIONS
 # ---------------------------------------------------------
+@st.cache_data(ttl=1800)
+def get_eur_usd_rate():
+    try:
+        fx = yf.Ticker("EURUSD=X")
+        rate = fx.fast_info.get("last_price")
+        if rate and float(rate) > 0:
+            return float(rate)
+    except Exception:
+        pass
+    return 1.163
+
 @st.cache_data(ttl=300)
 def fetch_ticker_data(ticker, period, interval):
     try:
@@ -138,8 +181,7 @@ def fetch_ticker_data(ticker, period, interval):
     except Exception:
         return None
 
-def run_scan(watchlist_name, watchlist_tickers, strategy_key, timeframe_key):
-    # Parameter kopieren, damit wir sie für Elite 7 überschreiben können
+def run_scan(watchlist_name, watchlist_tickers, strategy_key, timeframe_key, eur_usd):
     strat = STRATEGIES[strategy_key].copy()
     is_elite = (watchlist_name == "Elite 7 (EMR-Strategie)")
     
@@ -147,7 +189,7 @@ def run_scan(watchlist_name, watchlist_tickers, strategy_key, timeframe_key):
     if is_elite:
         strat["ema_fast"] = 50
         strat["ema_slow"] = 200
-        strat["sl_factor"] = 0.93 # Breiterer Puffer
+        strat["sl_factor"] = 0.93
         
     tf = TIMEFRAMES[timeframe_key]
     results = []
@@ -158,11 +200,14 @@ def run_scan(watchlist_name, watchlist_tickers, strategy_key, timeframe_key):
             continue
             
         close = float(df["Close"].iloc[-1])
-        # adjust=False liefert akkuratere Ergebnisse, die TradingView ähneln
         ema_fast = float(df["Close"].ewm(span=strat["ema_fast"], adjust=False).mean().iloc[-1])
         ema_slow = float(df["Close"].ewm(span=strat["ema_slow"], adjust=False).mean().iloc[-1])
         
-        # 1. Spezifische Logik für Elite 7 (Fokus auf EMA 200)
+        # Euro-Umrechnung für Zero
+        is_eur = ticker.endswith((".DE", ".PA", ".AS", ".MC"))
+        fx = 1.0 if is_eur else eur_usd
+        close_eur = close / fx
+        
         if is_elite:
             abstand_ema = ((close - ema_slow) / ema_slow) * 100
             reference_col = f"Abstand (EMA {strat['ema_slow']})"
@@ -171,8 +216,6 @@ def run_scan(watchlist_name, watchlist_tickers, strategy_key, timeframe_key):
                 status = "🟢 Intakt (Halten / Sparplan)"
             else:
                 status = "🔴 Unter EMA 200 (Cash parken)"
-                
-        # 2. Normale Swing-Trading Logik (Fokus auf MPS & Momentum)
         else:
             abstand_ema = ((close - ema_fast) / ema_fast) * 100
             reference_col = f"Abstand (EMA {strat['ema_fast']})"
@@ -188,12 +231,15 @@ def run_scan(watchlist_name, watchlist_tickers, strategy_key, timeframe_key):
                 status = "⚪ Neutral"
                 
         sl_price = min(ema_slow, close * strat["sl_factor"])
+        sl_eur = sl_price / fx
         
         results.append({
             "Ticker": ticker,
+            "WKN": WKN_DB.get(ticker, "-"),
             "Status": status,
-            "Kurs": round(close, 2),
-            "SL (Strategie)": round(sl_price, 2),
+            "Kurs (€)": round(close_eur, 2),
+            "SL (€)": round(sl_eur, 2),
+            "Kurs (Orig)": f"{round(close, 2)} {'€' if is_eur else '$'}",
             f"EMA {strat['ema_fast']}": round(ema_fast, 2),
             f"EMA {strat['ema_slow']}": round(ema_slow, 2),
             reference_col: f"{round(abstand_ema, 2)} %"
@@ -266,7 +312,7 @@ with tab1:
     st.session_state["selected_watchlist"] = selected_watchlist
     
     if selected_watchlist == "Eigene Watchlist":
-        custom_input = st.text_input("Ticker eingeben (kommagetrennt):", "SAP.DE, SIE.DE, AAPL, TSLA")
+        custom_input = st.text_input("Ticker eingeben (kommagetrennt):", "SAP.DE, SIE.DE, AAPL, TSLA, XOM")
         tickers_to_scan = [t.strip().upper() for t in custom_input.split(",") if t.strip()]
     else:
         tickers_to_scan = WATCHLISTS[selected_watchlist]
@@ -279,10 +325,12 @@ with tab1:
         st.session_state["active_strategy"] = selected_strategy
         st.session_state["active_tf"] = selected_tf
 
+    eur_usd_live = get_eur_usd_rate()
+    st.caption(f"EUR/USD-Kurs: **{eur_usd_live:.4f}** (US-Kurse & Stop-Loss werden automatisch in Euro umgerechnet)")
+
     if st.button("🚀 Scan starten", use_container_width=True):
         with st.spinner(f"Scanne {len(tickers_to_scan)} Werte... (Das dauert bei D1 kurz wg. 2-Jahres-Historie)"):
-            # HIER WICHTIG: selected_watchlist wird jetzt an run_scan übergeben!
-            scan_df = run_scan(selected_watchlist, tickers_to_scan, selected_strategy, selected_tf)
+            scan_df = run_scan(selected_watchlist, tickers_to_scan, selected_strategy, selected_tf, eur_usd_live)
             st.session_state["last_scan_df"] = scan_df
 
     if "last_scan_df" in st.session_state and not st.session_state["last_scan_df"].empty:
@@ -300,20 +348,22 @@ with tab1:
         if selected_rows:
             row_idx = selected_rows[0]
             sel_ticker = df_res.iloc[row_idx]["Ticker"]
-            sel_price = float(df_res.iloc[row_idx]["Kurs"])
-            sel_sl = float(df_res.iloc[row_idx]["SL (Strategie)"])
+            sel_wkn = df_res.iloc[row_idx]["WKN"]
+            sel_price = float(df_res.iloc[row_idx]["Kurs (€)"])
+            sel_sl = float(df_res.iloc[row_idx]["SL (€)"])
             
             st.session_state["selected_ticker"] = sel_ticker
+            st.session_state["selected_wkn"] = sel_wkn
             st.session_state["entry_price"] = sel_price
             st.session_state["calculated_sl"] = sel_sl
             
-            st.info(f"✅ **{sel_ticker}** geladen. Wechsel zum Tab 'Chart & Rechner'.")
+            st.info(f"✅ **{sel_ticker}** (WKN: {sel_wkn}) geladen. Wechsel zum Tab 'Chart & Rechner'.")
 
 # TAB 2: CHART & POSITIONSRECHNER
 with tab2:
-    st.subheader(f"Wert: {st.session_state['selected_ticker']}")
+    wkn_display = st.session_state.get("selected_wkn", "-")
+    st.subheader(f"Wert: {st.session_state['selected_ticker']} | WKN: {wkn_display}")
     
-    # EMA-Werte basierend auf aktiver Strategie abrufen
     curr_strat_key = st.session_state.get("active_strategy", list(STRATEGIES.keys())[0])
     
     # AUTOPILOT FÜR CHART: Wenn Elite 7 ausgewählt ist, zwinge Chart auf EMA 50 & 200
@@ -327,11 +377,10 @@ with tab2:
     active_tf = st.session_state.get("active_tf", list(TIMEFRAMES.keys())[0])
     tv_tf = TIMEFRAMES[active_tf]["tv_interval"]
     
-    # Chart rendern inklusive Werkzeugen, EMA-Indikatoren und BRK.B-Anpassung
     render_tv_chart_mobile(st.session_state["selected_ticker"], tv_tf, ema_fast_chart, ema_slow_chart)
     
     st.markdown("---")
-    st.subheader("🧮 Positionsrechner")
+    st.subheader("🧮 Positionsrechner (Euro / Zero)")
     
     calc_mode = st.radio("Berechnungsmethode:", ["Risikobasiert (% Depot)", "Feste Investition (€)"])
     
@@ -359,11 +408,11 @@ with tab2:
     
     curr_holding = STRATEGIES[curr_strat_key]["holding_time"]
     
-    st.markdown("#### 🔒 Ausgewählte Strategie-Parameter")
+    st.markdown("#### 🔒 Order-Parameter für Zero")
     st.text_input("⏱️ Geplante Haltedauer:", value=curr_holding, disabled=True)
-    st.number_input("Einstieg / Limit Order (€/$):", value=float(entry), disabled=True)
-    st.number_input("Stop Loss (€/$) [Strategie-Fix]:", value=float(sl), disabled=True)
-    st.number_input("Take Profit (€/$) [Aus CRV berechnet]:", value=float(round(tp, 2)), disabled=True)
+    st.number_input("Einstieg / Limit Order (€):", value=float(round(entry, 2)), disabled=True)
+    st.number_input("Stop Loss (€) [Strategie-Fix]:", value=float(round(sl, 2)), disabled=True)
+    st.number_input("Take Profit (€) [Aus CRV berechnet]:", value=float(round(tp, 2)), disabled=True)
 
     if risk_per_share > 0:
         if calc_mode == "Risikobasiert (% Depot)":
@@ -385,5 +434,7 @@ with tab2:
         with col_m2:
             st.metric("⚖️ Effektives CRV", f"1 : {target_crv:.2f}")
             st.metric("🟢 Max. Gewinn", f"{total_profit:,.2f} €")
+            
+        st.info(f"💡 **Order für Zero:** Kaufe **{shares}** Stk. mit Limit **{round(entry, 2)} €** und platziere einen Stop-Loss bei **{round(sl, 2)} €**.")
     else:
         st.error("Ungültiges Setup: Stop Loss liegt nicht unter dem Einstiegskurs.")
