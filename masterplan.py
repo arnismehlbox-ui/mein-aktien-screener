@@ -65,7 +65,7 @@ def get_elite_dividends():
             info = yf.Ticker(t).info
             div = info.get('dividendYield')
             if div is not None:
-                div_pct = div * 100
+                div_pct = div
             else:
                 div_pct = fallbacks[t]
         except:
