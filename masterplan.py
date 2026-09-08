@@ -23,7 +23,6 @@ st.title("👑 Der Masterplan: Freiheit ab 68")
 # HELPER: DEUTSCHE ZAHLENFORMATIERUNG
 # ---------------------------------------------------------
 def format_ger(val):
-    # Macht aus 170000 -> 170.000 (Tausenderpunkt statt Komma)
     return f"{val:,.0f}".replace(",", ".")
 
 # ---------------------------------------------------------
@@ -46,7 +45,7 @@ def calculate_wealth(start_cap, monthly_base, monthly_booster, booster_start_mon
         invested += deposit
         
         if m % 12 == 0:
-            history.append({"Monat": m, "Jahr": m//12, "Depotwert": round(cap, 2), "Eingezahlt": round(invested, 2)})
+            history.append({"Monat": m, "Jahr": m // 12, "Depotwert": round(cap, 2), "Eingezahlt": round(invested, 2)})
             
     return pd.DataFrame(history), cap, invested
 
@@ -65,23 +64,33 @@ def calc_pension(final_capital):
 @st.cache_data(ttl=3600)
 def get_elite_dividends():
     tickers = ["MSFT", "AVGO", "SAP.DE", "V", "ALV.DE", "PG", "O"]
-    # Fallbacks falls Yahoo Finance API klemmt
-    fallbacks = {"MSFT": 0.0073, "AVGO": 0.0120, "SAP.DE": 0.0135, "V": 0.0072, "ALV.DE": 0.0450, "PG": 0.0240, "O": 0.0530}
+    fallbacks = {
+        "MSFT": 0.73,
+        "AVGO": 1.30,
+        "SAP.DE": 1.37,
+        "V": 0.71,
+        "ALV.DE": 3.82,
+        "PG": 2.97,
+        "O": 5.31
+    }
     
     data = []
     for t in tickers:
+        div_pct = fallbacks[t]
         try:
             info = yf.Ticker(t).info
             div = info.get('dividendYield')
             if div is not None:
-                # Yahoo liefert nun echte Dezimalwerte, daher nicht mehr * 100 multiplizieren, falls schon Prozent
-                div_pct = div * 100 if div < 1 else div
-            else:
-                div_pct = fallbacks[t] * 100
-        except:
-            div_pct = fallbacks[t] * 100
+                # Skalierungsprüfung: Fängt 0.0073, 0.73 sowie 73.00 sauber ab
+                if div > 20:
+                    div_pct = div / 100
+                elif div > 0.20:
+                    div_pct = div
+                else:
+                    div_pct = div * 100
+        except Exception:
+            div_pct = fallbacks[t]
             
-        # Deutsches Komma für Prozente (z.B. 5,30 %)
         div_str = f"{div_pct:.2f}".replace(".", ",")
         data.append({"Aktie": t, "Live Dividendenrendite": f"{div_str} %"})
         
@@ -116,9 +125,7 @@ with tab1:
         
     st.markdown("---")
     
-    # Feste Berechnung Elite 7 (Booster fließt voll in Elite)
     df_elite, final_elite, inv_elite = calculate_wealth(1080, 320, 170, 45, 14, 11)
-    # Feste Berechnung MPS
     df_mps, final_mps, inv_mps = calculate_wealth(270, 80, 0, 45, 14, 15)
     
     total_final = final_elite + final_mps
@@ -153,7 +160,7 @@ with tab2:
     pension_net_ist, _, _ = calc_pension(total_ist)
     
     st.markdown("---")
-    st.markdown(f"### 🎯 Neue Prognose basierend auf deinem Ist-Zustand")
+    st.markdown("### 🎯 Neue Prognose basierend auf deinem Ist-Zustand")
     st.markdown(f"Erwartetes Gesamtkapital: **{format_ger(total_ist)} €**")
     st.markdown(f"<h3 style='color:#26a69a;'>💸 Erwarteter Rentenzuschuss: {format_ger(pension_net_ist)} € Netto / Monat</h3>", unsafe_allow_html=True)
 
@@ -182,7 +189,6 @@ with tab3:
         v_rendite_elite = st.slider("Rendite Elite 7", min_value=2.0, max_value=20.0, value=11.0, step=0.5)
         v_rendite_mps = st.slider("Rendite MPS", min_value=2.0, max_value=30.0, value=15.0, step=0.5)
         
-    # Frei berechnen
     df_elite_free, final_elite_free, _ = calculate_wealth(v_start_elite, v_rate_elite, v_booster, v_booster_start, v_jahre, v_rendite_elite)
     df_mps_free, final_mps_free, _ = calculate_wealth(v_start_mps, v_rate_mps, 0, v_booster_start, v_jahre, v_rendite_mps)
     
@@ -199,7 +205,6 @@ with tab3:
     
     st.markdown("**(Hybrid-Entnahme: 70% in 5% Netto-Dividenden, 30% in 8% Netto-Stillhalter ETF)**")
     
-    # Kombinierter Chart für die Spielwiese
     df_combined = pd.DataFrame({
         "Jahr": df_elite_free["Jahr"],
         "Elite 7 Wert": df_elite_free["Depotwert"],
