@@ -1,190 +1,351 @@
 import streamlit as st
-import streamlit.components.v1 as components
-import yfinance as yf
 import pandas as pd
+import yfinance as yf
+import streamlit.components.v1 as components
 
-# -------------------------------------------------------------------
-# PAGE CONFIG & STYLING
-# -------------------------------------------------------------------
-st.set_page_config(page_title="Trading Hub", layout="wide", initial_sidebar_state="collapsed")
+# ---------------------------------------------------------
+# PAGE CONFIGURATION (MOBILE OPTIMIZED)
+# ---------------------------------------------------------
+st.set_page_config(
+    page_title="MPS Mobile Scanner",
+    page_icon="📱",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
 
+# CSS-Anpassungen für gute Lesbarkeit & Mobile Touch
 st.markdown("""
-<style>
-    .block-container { padding: 0.5rem 0.2rem !important; max-width: 100% !important; }
-    .stApp { background-color: #131722 !important; color: #d1d4dc !important; }
-    input, select, div[role="combobox"] { background-color: #1e222d !important; color: #ffffff !important; border: 1px solid #2a2e39 !important; border-radius: 6px !important; }
-    header {visibility: hidden;}
-    footer {visibility: hidden;}
+    <style>
+    .block-container { padding-top: 1rem; padding-bottom: 2rem; padding-left: 0.5rem; padding-right: 0.5rem; }
+    div[data-baseweb="select"] { font-size: 16px; }
+    button { min-height: 48px; font-size: 16px !important; }
     
-    /* Trade-Box CSS passend zu deinem Screenshot */
-    .trade-box-tp { background-color: rgba(38, 166, 154, 0.15); border-left: 5px solid #26a69a; padding: 12px; border-radius: 6px; margin-bottom: 8px; }
-    .trade-box-entry { background-color: rgba(41, 98, 255, 0.15); border-left: 5px solid #2962ff; padding: 12px; border-radius: 6px; margin-bottom: 8px; }
-    .trade-box-sl { background-color: rgba(239, 83, 80, 0.15); border-left: 5px solid #ef5350; padding: 12px; border-radius: 6px; margin-bottom: 8px; }
-    .trade-box-info { background-color: rgba(255, 193, 7, 0.15); border-left: 5px solid #ffc107; padding: 10px; border-radius: 6px; margin-bottom: 8px; }
-</style>
+    /* Optimierter Kontrast für deaktivierte/schreibgeschützte Felder */
+    input:disabled {
+        color: #000000 !important;
+        -webkit-text-fill-color: #000000 !important;
+        font-weight: 700 !important;
+        opacity: 1 !important;
+    }
+    div[data-baseweb="input"] {
+        background-color: #e2e8f0 !important;
+        border-radius: 8px !important;
+    }
+    </style>
 """, unsafe_allow_html=True)
 
-# -------------------------------------------------------------------
-# WATCHLISTS (inklusive Elite 7)
-# -------------------------------------------------------------------
-if "watchlists" not in st.session_state:
-    st.session_state.watchlists = {
-        "Elite 7 (EMR-Strategie)": ["MSFT", "AVGO", "SAP.DE", "V", "ALV.DE", "PG", "O"],
-        "Meine Favoriten": ["NVDA", "PLTR", "SAP.DE"],
-        "DAX (Deutschland Top 40)": ["SAP.DE", "SIE.DE", "ALV.DE", "DTE.DE", "BMW.DE", "MBG.DE", "MUV2.DE", "BAS.DE"],
-        "MDAX & SDAX (DE Mid/Small)": ["RHM.DE", "LHA.DE", "TKA.DE", "PUM.DE", "HFG.DE", "FPE.DE"],
-        "Dow Jones (US Top 30)": ["AAPL", "MSFT", "V", "JNJ", "WMT", "JPM", "PG", "DIS", "HD", "UNH"],
-        "S&P 500 (US Schwergewichte)": ["NVDA", "AAPL", "MSFT", "AMZN", "GOOGL", "META", "TSLA", "AVGO", "COST", "AMD"],
-        "EURO STOXX 50 (Europa)": ["ASML.AS", "MC.PA", "SAP.DE", "OR.PA", "SAN.MC", "SHEL.L", "TTE.PA"],
-        "Russell 2000 (US Small Caps)": ["PLTR", "SMCI", "CELH", "SOFI", "HOOD", "RBLX"]
+# ---------------------------------------------------------
+# 1. WATCHLISTS & STRATEGIEN DEFINITION (INKL. HALTEDAUER)
+# ---------------------------------------------------------
+WATCHLISTS = {
+    "DAX 40 (DE)": [
+        "SAP.DE", "SIE.DE", "ALV.DE", "DTE.DE", "AIR.DE", "MBG.DE", "BMW.DE", 
+        "BAS.DE", "BAYN.DE", "ADS.DE", "RWE.DE", "DB1.DE", "IFX.DE", "MUV2.DE",
+        "DTG.DE", "HEN3.DE", "EONG.DE", "MRK.DE", "VOW3.DE", "CON.DE"
+    ],
+    "MDAX (DE)": [
+        "LHA.DE", "EVK.DE", "HFG.DE", "PUG.DE", "G1A.DE", "TKA.DE", "DEQ.DE", "FPE3.DE", "KGX.DE"
+    ],
+    "SDAX (DE)": [
+        "S92.DE", "HDD.DE", "12D1.DE", "HAG.DE", "PFP.DE", "SOW.DE", "SNG.DE"
+    ],
+    "Euro Stoxx 50 (EU)": [
+        "ASML.AS", "MC.PA", "SAP.DE", "OR.PA", "TTE.PA", "SAN.MC", "SU.PA", "IBE.MC", "CDI.PA"
+    ],
+    "Dow Jones Industrial (US)": [
+        "AAPL", "MSFT", "UNH", "GS", "HD", "CAT", "AMZN", "V", "BA", "JNJ", "PG", "JPM", "CVX", "MCD", "WMT"
+    ],
+    "S&P 500 (US)": [
+        "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "BRK-B", "LLY", "TSLA", "AVGO", "JPM", "UNH", "XOM"
+    ],
+    "US Tech / Nasdaq 100 (US)": [
+        "AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "AVGO", "TSLA", "AMD", "COST", "NFLX", "TMUS"
+    ],
+    "Russell 2000 (US)": [
+        "IWM", "VTWO", "SMCI", "AAL", "MSTR", "CELH", "CROX", "RBLX"
+    ],
+    "Eigene Watchlist": []
+}
+
+STRATEGIES = {
+    "MPS (Market Pullback Setup - EMA20)": {
+        "ema_fast": 20,
+        "ema_slow": 50,
+        "sl_factor": 0.97,
+        "holding_time": "3 bis 10 Tage (Klassischer Swing Trade)",
+        "desc": "Rücksetzer nahe EMA 20 im intakten Aufwärtstrend."
+    },
+    "Breakout / Allzeithoch (Momentum)": {
+        "ema_fast": 10,
+        "ema_slow": 30,
+        "sl_factor": 0.96,
+        "holding_time": "2 bis 8 Tage (Zügiger Impuls-Trade)",
+        "desc": "Momentum-Ausbruch nahe am Periodenhoch."
+    },
+    "Trendfolge & Supertrend (Swing)": {
+        "ema_fast": 20,
+        "ema_slow": 50,
+        "sl_factor": 0.95,
+        "holding_time": "1 bis 4 Wochen (Mittelfristiger Trend)",
+        "desc": "Stetiger Aufwärtstrend über EMA 20 & 50 reiten."
+    },
+    "Qualitäts- & Value-Trend": {
+        "ema_fast": 50,
+        "ema_slow": 200,
+        "sl_factor": 0.93,
+        "holding_time": "1 bis 6 Monate (Positions-Trading)",
+        "desc": "Übergeordneter Großtrend (EMA 50 / EMA 200)."
     }
+}
 
+TIMEFRAMES = {
+    "Swingtrading (Tageschart - D1)": {"period": "6mo", "interval": "1d", "tv_interval": "D"},
+    "Positions-Trading (Wochenchart - W1)": {"period": "2y", "interval": "1wk", "tv_interval": "W"},
+    "Daytrading (1 Std - H1)": {"period": "1mo", "interval": "60m", "tv_interval": "60"},
+    "Daytrading (15 Min - M15)": {"period": "5d", "interval": "15m", "tv_interval": "15"}
+}
+
+# ---------------------------------------------------------
+# 2. SESSION STATE MANAGEMENT
+# ---------------------------------------------------------
 if "selected_ticker" not in st.session_state:
-    st.session_state.selected_ticker = "MSFT"
-if "current_wl_name" not in st.session_state:
-    st.session_state.current_wl_name = "Elite 7 (EMR-Strategie)"
+    st.session_state["selected_ticker"] = "SAP.DE"
+if "entry_price" not in st.session_state:
+    st.session_state["entry_price"] = 180.00
+if "calculated_sl" not in st.session_state:
+    st.session_state["calculated_sl"] = 174.60
+if "target_crv" not in st.session_state:
+    st.session_state["target_crv"] = 2.00
+if "active_strategy" not in st.session_state:
+    st.session_state["active_strategy"] = list(STRATEGIES.keys())[0]
 
-st.markdown("<h3 style='margin:0; text-align:center; color:#2962ff; margin-bottom: 10px;'>⚡ Trading Command Center</h3>", unsafe_allow_html=True)
-
-# -------------------------------------------------------------------
-# 2-SEITEN LAYOUT (TABS)
-# -------------------------------------------------------------------
-tab1, tab2 = st.tabs(["🔍 1. Markt-Screener", "📈 2. Chart & Manager"])
-
-# ==========================================
-# SEITE 1: SCREENER & AUSWAHL
-# ==========================================
-with tab1:
-    st.session_state.current_wl_name = st.selectbox("📁 Watchlist wählen:", list(st.session_state.watchlists.keys()))
-    current_list = st.session_state.watchlists[st.session_state.current_wl_name]
-    
-    st.markdown("---")
-    st.markdown("### 🎯 Aktie für Analyse wählen")
-    # Hier wählst du aus, was auf Seite 2 analysiert werden soll
-    st.session_state.selected_ticker = st.selectbox("Welche Aktie möchtest du im Chart sehen?", current_list, index=0)
-    
-    with st.expander("➕ Neuen Ticker zur Liste hinzufügen"):
-        new_symbol = st.text_input("Symbol eingeben (z.B. BABA, NFLX, CON.DE):").strip().upper()
-        if st.button("Hinzufügen") and new_symbol:
-            if new_symbol not in st.session_state.watchlists[st.session_state.current_wl_name]:
-                st.session_state.watchlists[st.session_state.current_wl_name].append(new_symbol)
-                st.session_state.selected_ticker = new_symbol
-                st.rerun()
-
-    st.markdown("---")
-    if st.button("🚀 Live-Scan für diese Watchlist starten", type="primary"):
-        scan_results = []
-        with st.spinner("Scanne Kurse..."):
-            for sym in current_list:
-                try:
-                    df = yf.Ticker(sym).history(period="1mo")
-                    if not df.empty and len(df) >= 20:
-                        cp = float(df['Close'].iloc[-1])
-                        chg = float(((cp - df['Close'].iloc[-2]) / df['Close'].iloc[-2]) * 100)
-                        sma20 = float(df['Close'].rolling(20).mean().iloc[-1])
-                        trend = "🟢 Bullisch" if cp > sma20 else "🔴 Bärisch"
-                        scan_results.append({"Ticker": sym, "Kurs": f"{cp:.2f}", "24h Trend": f"{chg:+.2f}%", "Signal": trend})
-                except Exception:
-                    pass
-
-        if scan_results:
-            st.dataframe(pd.DataFrame(scan_results), use_container_width=True)
-
-# ==========================================
-# SEITE 2: CHART & TRADE MANAGER
-# ==========================================
-with tab2:
-    strategy = st.selectbox(
-        "📊 Handelsstrategie wählen:",
-        ["Swing Trading (SL: 5% | TP: 15%)", "Momentum / Breakout (SL: 3% | TP: 9%)", "Konservativ (SL: 2% | TP: 4%)"]
-    )
-
-    # TradingView Funktion (mit Elite 7 EMA Logik)
-    def get_tradingview_widget(ticker, strat, wl_name):
-        if ".DE" in ticker: tv_symbol = f"XETR:{ticker.replace('.DE', '')}"
-        elif ".PA" in ticker: tv_symbol = f"EURONEXT:{ticker.replace('.PA', '')}"
-        elif ".AS" in ticker: tv_symbol = f"EURONEXT:{ticker.replace('.AS', '')}"
-        elif ticker in ["NVDA", "AAPL", "GOOGL", "MSFT", "AMZN", "META", "TSLA", "AMD", "PLTR", "AVGO", "COST", "O", "PG", "V"]:
-            tv_symbol = f"NASDAQ:{ticker}"
-        else: tv_symbol = f"NYSE:{ticker}"
-
-        # Standard Indikator
-        studies = ["MASimple@tv-basicstudies", "RSI@tv-basicstudies"]
-        
-        # Elite 7 -> EMA laden
-        if "Elite 7" in wl_name:
-            studies = ["MAExp@tv-basicstudies"]
-        # Momentum -> MACD laden
-        elif "Momentum" in strat:
-            studies = ["RSI@tv-basicstudies", "MACD@tv-basicstudies"]
-
-        studies_js = str(studies).replace("'", '"')
-
-        return f"""
-        <div class="tradingview-widget-container" style="height:100%;width:100%;">
-          <div id="tradingview_chart" style="height:450px;width:100%;"></div>
-          <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
-          <script type="text/javascript">
-          new TradingView.widget({{
-            "autosize": true, "symbol": "{tv_symbol}", "interval": "D", "timezone": "Europe/Berlin",
-            "theme": "dark", "style": "1", "locale": "de_DE", "toolbar_bg": "#1e222d",
-            "enable_publishing": false, "hide_side_toolbar": false, "allow_symbol_change": true,
-            "studies": {studies_js}, "container_id": "tradingview_chart"
-          }});
-          </script>
-        </div>
-        """
-
-    components.html(get_tradingview_widget(st.session_state.selected_ticker, strategy, st.session_state.current_wl_name), height=460, scrolling=False)
-
-    # -------------------------------------------------------------------
-    # AUTO TRADE MANAGER
-    # -------------------------------------------------------------------
-    st.markdown("### 🧮 Auto Trade-Manager")
-
-    capital = st.number_input("💰 Dein einzusetzendes Kapital (€):", value=2000.0, step=100.0)
-
-    symbol = st.session_state.selected_ticker
-    current_price = 100.0
-
+# ---------------------------------------------------------
+# 3. HELPER FUNCTIONS
+# ---------------------------------------------------------
+@st.cache_data(ttl=300)
+def fetch_ticker_data(ticker, period, interval):
     try:
-        ticker_data = yf.Ticker(symbol).history(period="1d")
-        if not ticker_data.empty:
-            current_price = float(ticker_data['Close'].iloc[-1])
+        df = yf.download(ticker, period=period, interval=interval, progress=False)
+        if df.empty or len(df) < 20:
+            return None
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+        return df
     except Exception:
-        pass
+        return None
 
-    if "Swing Trading" in strategy:
-        sl_pct, tp_pct = 0.05, 0.15
-    elif "Momentum" in strategy:
-        sl_pct, tp_pct = 0.03, 0.09
+def run_scan(watchlist_tickers, strategy_key, timeframe_key):
+    strat = STRATEGIES[strategy_key]
+    tf = TIMEFRAMES[timeframe_key]
+    results = []
+    
+    for ticker in watchlist_tickers:
+        df = fetch_ticker_data(ticker, tf["period"], tf["interval"])
+        if df is None:
+            continue
+            
+        close = float(df["Close"].iloc[-1])
+        ema_fast = float(df["Close"].ewm(span=strat["ema_fast"]).mean().iloc[-1])
+        ema_slow = float(df["Close"].ewm(span=strat["ema_slow"]).mean().iloc[-1])
+        
+        abstand_ema = ((close - ema_fast) / ema_fast) * 100
+        sl_price = min(ema_slow, close * strat["sl_factor"])
+        
+        if close > ema_fast and ema_fast > ema_slow:
+            if abs(abstand_ema) <= 1.5:
+                status = "🔥 PERFECT MPS SETUP"
+            else:
+                status = "📈 Aufwärtstrend"
+        elif close < ema_fast and ema_fast < ema_slow:
+            status = "📉 Abwärtstrend"
+        else:
+            status = "⚪ Neutral"
+            
+        results.append({
+            "Ticker": ticker,
+            "Status": status,
+            "Kurs": round(close, 2),
+            "SL (Strategie)": round(sl_price, 2),
+            f"EMA {strat['ema_fast']}": round(ema_fast, 2),
+            "Abstand %": round(abstand_ema, 2)
+        })
+        
+    return pd.DataFrame(results)
+
+def render_tv_chart_mobile(ticker, tv_interval, ema_fast=20, ema_slow=50):
+    tv_symbol = ticker.strip().upper()
+    
+    if tv_symbol.endswith(".DE"):
+        tv_symbol = f"XETR:{tv_symbol.replace('.DE', '')}"
+    elif tv_symbol.endswith(".PA"):
+        tv_symbol = f"EURONEXT:{tv_symbol.replace('.PA', '')}"
+    elif tv_symbol.endswith(".AS"):
+        tv_symbol = f"EURONEXT:{tv_symbol.replace('.AS', '')}"
+    elif tv_symbol.endswith(".MC"):
+        tv_symbol = f"BME:{tv_symbol.replace('.MC', '')}"
     else:
-        sl_pct, tp_pct = 0.02, 0.04
+        # Ersetzt Bindestrich bei US-Klassensymbolen (z. B. BRK-B -> BRK.B) für TradingView
+        tv_symbol = tv_symbol.replace("-", ".")
+    
+    chart_html = f"""
+    <div class="tradingview-widget-container" style="height:480px;width:100%;">
+      <div id="tradingview_chart" style="height:480px;width:100%;"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+      <script type="text/javascript">
+      new TradingView.widget({{
+        "autosize": true,
+        "symbol": "{tv_symbol}",
+        "interval": "{tv_interval}",
+        "timezone": "Europe/Berlin",
+        "theme": "dark",
+        "style": "1",
+        "locale": "de_DE",
+        "toolbar_bg": "#f1f3f6",
+        "enable_publishing": false,
+        "hide_side_toolbar": false,
+        "allow_symbol_change": true,
+        "container_id": "tradingview_chart",
+        "studies": [
+          {{
+            "id": "STD;EMA",
+            "inputs": {{
+              "length": {ema_fast}
+            }}
+          }},
+          {{
+            "id": "STD;EMA",
+            "inputs": {{
+              "length": {ema_slow}
+            }}
+          }}
+        ]
+      }});
+      </script>
+    </div>
+    """
+    components.html(chart_html, height=490)
 
-    limit_order = current_price
-    sl_price = current_price * (1 - sl_pct)
-    tp_price = current_price * (1 + tp_pct)
+# ---------------------------------------------------------
+# 4. MAIN APP UI
+# ---------------------------------------------------------
+st.title("📱 MPS Mobile Scanner")
 
-    shares = int(capital // limit_order) if limit_order > 0 else 0
-    invested = shares * limit_order
-    max_risk = (limit_order - sl_price) * shares
-    max_profit = (tp_price - limit_order) * shares
-    crv = max_profit / max_risk if max_risk > 0 else 0
+tab1, tab2 = st.tabs(["🔎 Scanner", "📊 Chart & Rechner"])
 
-    st.markdown(f"""
-    <div class="trade-box-info">
-        <b>ℹ️ Aktueller Marktpreis ({symbol}):</b> {current_price:.2f} | <b>Investitionsvolumen:</b> {invested:.2f} €
-    </div>
-    <div class="trade-box-tp">
-        <strong style="color:#26a69a;">🟢 Take Profit (TP Target)</strong><br>
-        Verkaufssignal bei: <b>{tp_price:.2f}</b> (+{tp_pct*100:.0f}%) | Ziel-Gewinn: <b>+{max_profit:.2f} €</b>
-    </div>
-    <div class="trade-box-entry">
-        <strong style="color:#2962ff;">🔵 Limit Buy Order (Einstieg)</strong><br>
-        Kauf-Order setzen bei: <b>{limit_order:.2f}</b> | Empfohlene Stückzahl: <b>{shares} Stück</b>
-    </div>
-    <div class="trade-box-sl">
-        <strong style="color:#ef5350;">🔴 Stop Loss (SL Absicherung)</strong><br>
-        Stopp setzen bei: <b>{sl_price:.2f}</b> (-{sl_pct*100:.0f}%) | Max. Risiko: <b>-{max_risk:.2f} €</b> | CRV: <b>1:{crv:.1f}</b>
-    </div>
-    """, unsafe_allow_html=True)
+# TAB 1: SCANNER
+with tab1:
+    selected_watchlist = st.selectbox("1. Watchlist wählen:", list(WATCHLISTS.keys()))
+    
+    if selected_watchlist == "Eigene Watchlist":
+        custom_input = st.text_input("Ticker eingeben (kommagetrennt):", "SAP.DE, SIE.DE, AAPL, TSLA")
+        tickers_to_scan = [t.strip().upper() for t in custom_input.split(",") if t.strip()]
+    else:
+        tickers_to_scan = WATCHLISTS[selected_watchlist]
+
+    with st.expander("⚙️ Strategie & Zeiteinheit anpassen", expanded=True):
+        selected_strategy = st.selectbox("Strategie:", list(STRATEGIES.keys()))
+        selected_tf = st.selectbox("Zeiteinheit:", list(TIMEFRAMES.keys()))
+        
+        st.info(f"⏱️ **Ungefähre Haltedauer:** {STRATEGIES[selected_strategy]['holding_time']}\n\nℹ️ {STRATEGIES[selected_strategy]['desc']}")
+        st.session_state["active_strategy"] = selected_strategy
+
+    if st.button("🚀 Scan starten", use_container_width=True):
+        with st.spinner(f"Scanne {len(tickers_to_scan)} Werte..."):
+            scan_df = run_scan(tickers_to_scan, selected_strategy, selected_tf)
+            st.session_state["last_scan_df"] = scan_df
+
+    if "last_scan_df" in st.session_state and not st.session_state["last_scan_df"].empty:
+        df_res = st.session_state["last_scan_df"]
+        st.success(f"Scan fertig! {len(df_res)} Werte analysiert.")
+        
+        event = st.dataframe(
+            df_res,
+            use_container_width=True,
+            selection_mode="single-row",
+            on_select="rerun"
+        )
+        
+        selected_rows = event.selection.rows if hasattr(event, "selection") else []
+        if selected_rows:
+            row_idx = selected_rows[0]
+            sel_ticker = df_res.iloc[row_idx]["Ticker"]
+            sel_price = float(df_res.iloc[row_idx]["Kurs"])
+            sel_sl = float(df_res.iloc[row_idx]["SL (Strategie)"])
+            
+            st.session_state["selected_ticker"] = sel_ticker
+            st.session_state["entry_price"] = sel_price
+            st.session_state["calculated_sl"] = sel_sl
+            
+            st.info(f"✅ **{sel_ticker}** geladen. Wechsel zum Tab 'Chart & Rechner'.")
+
+# TAB 2: CHART & POSITIONSRECHNER
+with tab2:
+    st.subheader(f"Wert: {st.session_state['selected_ticker']}")
+    
+    # EMA-Werte basierend auf aktiver Strategie abrufen
+    curr_strat_key = st.session_state.get("active_strategy", list(STRATEGIES.keys())[0])
+    ema_fast = STRATEGIES[curr_strat_key]["ema_fast"]
+    ema_slow = STRATEGIES[curr_strat_key]["ema_slow"]
+    
+    tv_tf = TIMEFRAMES[selected_tf]["tv_interval"] if 'selected_tf' in locals() else "D"
+    
+    # Chart rendern inklusive Werkzeugen, EMA-Indikatoren und BRK.B-Anpassung
+    render_tv_chart_mobile(st.session_state["selected_ticker"], tv_tf, ema_fast, ema_slow)
+    
+    st.markdown("---")
+    st.subheader("🧮 Positionsrechner")
+    
+    calc_mode = st.radio("Berechnungsmethode:", ["Risikobasiert (% Depot)", "Feste Investition (€)"])
+    
+    if calc_mode == "Risikobasiert (% Depot)":
+        depot_size = st.number_input("Gesamtkapital (€):", value=1500.0, step=100.0)
+        risk_pct = st.number_input("Risiko pro Trade (%):", value=2.0, step=0.25)
+        max_risk_eur = depot_size * (risk_pct / 100.0)
+    else:
+        invest_amount = st.number_input("Anlagebetrag (€):", value=1000.0, step=100.0)
+        max_risk_eur = None
+
+    target_crv = st.number_input(
+        "🎯 Wunsch-CRV (Anpassbar):", 
+        value=float(st.session_state["target_crv"]), 
+        step=0.25, 
+        min_value=1.0, 
+        max_value=10.0
+    )
+    st.session_state["target_crv"] = target_crv
+
+    entry = st.session_state["entry_price"]
+    sl = st.session_state["calculated_sl"]
+    risk_per_share = entry - sl
+    tp = entry + (risk_per_share * target_crv)
+    
+    curr_holding = STRATEGIES[curr_strat_key]["holding_time"]
+    
+    st.markdown("#### 🔒 Ausgewählte Strategie-Parameter")
+    st.text_input("⏱️ Geplante Haltedauer:", value=curr_holding, disabled=True)
+    st.number_input("Einstieg / Limit Order (€/$):", value=float(entry), disabled=True)
+    st.number_input("Stop Loss (€/$) [Strategie-Fix]:", value=float(sl), disabled=True)
+    st.number_input("Take Profit (€/$) [Aus CRV berechnet]:", value=float(round(tp, 2)), disabled=True)
+
+    if risk_per_share > 0:
+        if calc_mode == "Risikobasiert (% Depot)":
+            shares = int(max_risk_eur / risk_per_share)
+            total_volume = shares * entry
+        else:
+            shares = int(invest_amount / entry)
+            total_volume = shares * entry
+            max_risk_eur = shares * risk_per_share
+            
+        total_profit = shares * (tp - entry)
+        
+        st.markdown("---")
+        col_m1, col_m2 = st.columns(2)
+        with col_m1:
+            st.metric("📦 Stückzahl", f"{shares} Stk.")
+            st.metric("🔴 Max. Verlust", f"{max_risk_eur:,.2f} €")
+            st.metric("💰 Gesamtvolumen", f"{total_volume:,.2f} €")
+        with col_m2:
+            st.metric("⚖️ Effektives CRV", f"1 : {target_crv:.2f}")
+            st.metric("🟢 Max. Gewinn", f"{total_profit:,.2f} €")
+    else:
+        st.error("Ungültiges Setup: Stop Loss liegt nicht unter dem Einstiegskurs.")
